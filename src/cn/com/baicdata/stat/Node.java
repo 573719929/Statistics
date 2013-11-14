@@ -57,6 +57,7 @@ public class Node implements org.apache.thrift.TBase<Node, Node._Fields>,
 	public int show; // required
 	public int click; // required
 	public double cost; // required
+	public double fee; // required
 
 	/**
 	 * The set of fields this struct contains, along with convenience methods
@@ -265,8 +266,9 @@ public class Node implements org.apache.thrift.TBase<Node, Node._Fields>,
 		this.click += c;
 	}
 
-	public void cost(double c) {
-		this.click += c;
+	public void cost(double c, double f) {
+		this.cost += c;
+		this.fee += f;
 	}
 
 	public Node deepCopy() {
@@ -421,6 +423,9 @@ public class Node implements org.apache.thrift.TBase<Node, Node._Fields>,
 
 	public double getCost() {
 		return this.cost;
+	}
+	public double getFee() {
+		return this.fee;
 	}
 
 	public Node setCost(double cost) {
@@ -722,39 +727,7 @@ public class Node implements org.apache.thrift.TBase<Node, Node._Fields>,
 
 	@Override
 	public String toString() {
-		StringBuilder sb = new StringBuilder("Node(");
-		boolean first = true;
-
-		sb.append("bid:");
-		sb.append(this.bid);
-		first = false;
-		if (!first)
-			sb.append(", ");
-		sb.append("bidres:");
-		sb.append(this.bidres);
-		first = false;
-		if (!first)
-			sb.append(", ");
-		sb.append("creative:");
-		sb.append(this.creative);
-		first = false;
-		if (!first)
-			sb.append(", ");
-		sb.append("show:");
-		sb.append(this.show);
-		first = false;
-		if (!first)
-			sb.append(", ");
-		sb.append("click:");
-		sb.append(this.click);
-		first = false;
-		if (!first)
-			sb.append(", ");
-		sb.append("cost:");
-		sb.append(this.cost);
-		first = false;
-		sb.append(")");
-		return sb.toString();
+		return String.format("%d,%d,%d,%d,%d,%.10f,%.10f", this.bid, this.bidres, this.creative, this.show, this.click, this.cost, this.fee);
 	}
 
 	public void validate() throws org.apache.thrift.TException {
