@@ -7,6 +7,8 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.UnknownHostException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.HashMap;
 
 import org.apache.commons.cli.CommandLine;
@@ -181,26 +183,24 @@ public class Statd {
 	public static void main(String[] args) {
 		// TODO Auto-generated method stub
 		
-//		String mysql = "112.124.46.78", mongoh = "112.124.55.156";
 		Options options = new Options();
-		options.addOption("i", "incache", true, "read cache from, required");
-		options.addOption("o", "outcache", true, "save cache to, required");
 		options.addOption("f", "file", true, "log file, required");
-		options.addOption(null, "adp", true, "adp server, required");
-		options.addOption(null, "stat", true, "statistics server, required");
+		options.addOption("a", "adp", true, "adp server, required");
+		options.addOption("s", "stat", true, "statistics server, required");
+		options.addOption("c", "cache", true, "cache server, required");
 		CommandLine cl = null;
 		try {
 			cl = new PosixParser().parse(options, args);
 		} catch (ParseException e) {
 			e.printStackTrace();
 		}
-		if (cl == null || !cl.hasOption("i") || !cl.hasOption("o") || !cl.hasOption("f") || !cl.hasOption("adp") || !cl.hasOption("stat")) {
-			new HelpFormatter().printHelp("java -jar Statd.jar -i [in cache files] -o [out cache files] -f [log files]", options);
+		if (cl == null || !cl.hasOption("f") || !cl.hasOption("adp") || !cl.hasOption("stat") || !cl.hasOption("cache")) {
+			new HelpFormatter().printHelp("java -jar Statd.jar [options] -f [comma separated log files]", options);
 		} else {
-			String mysql = cl.getOptionValue("adp"), mongoh = cl.getOptionValue("stat");
-			Db d = new Db(1, 1, mysql, mongoh);
-			d.read(cl.getOptionValue("i").split(","));
+			String mysql = cl.getOptionValue("adp"), mongoh = cl.getOptionValue("stat"), redis = cl.getOptionValue("cache");
+			Db d = new Db(mysql, mongoh, redis);
 			HashMap<String, Node> data = new HashMap<String, Node>();
+			System.out.println(String.format("%s Process start", new SimpleDateFormat("yyyy-MM-dd hh:mm:ss SS").format(new Date())));
 			for (String f : cl.getOptionValue("f").split(",")) {
 				File fp = new File(f);
 				if (fp.exists()) {
@@ -251,6 +251,7 @@ public class Statd {
 					}
 				}
 			}
+			System.out.println(String.format("%s Process complete", new SimpleDateFormat("yyyy-MM-dd hh:mm:ss SS").format(new Date())));
 			Mongo mongo = null;
 			try {
 				mongo = new Mongo(mongoh, 33458);
@@ -261,6 +262,7 @@ public class Statd {
 				DBCollection col = mongo.getDB("StatV2").getCollection("Detail");
 				DBObject query = new BasicDBObject(), document = new BasicDBObject();
 				int id = 0, userid = 0, planid = 0;
+				System.out.println(String.format("%s Write to mongo", new SimpleDateFormat("yyyy-MM-dd hh:mm:ss SS").format(new Date())));
 				for (String r : data.keySet()) {
 					query.put("_id", r);
 					String seg[] = r.split(",");
@@ -303,10 +305,15 @@ public class Statd {
 					document.put("$inc", r1);
 					col.update(query, document, true, false);
 				}
+				System.out.println(String.format("%s Write to mongo complete", new SimpleDateFormat("yyyy-MM-dd hh:mm:ss SS").format(new Date())));
+				
+				System.out.println(String.format("%s Start Settle", new SimpleDateFormat("yyyy-MM-dd hh:mm:ss SS").format(new Date())));
 				d.processCutDown();
+				System.out.println(String.format("%s Finish Settl", new SimpleDateFormat("yyyy-MM-dd hh:mm:ss SS").format(new Date())));
 				mongo.close();
 			}
-			d.save(cl.getOptionValue("o").split(","));
+//			d.save(cl.getOptionValue("o").split(","));
+			System.out.println();
 		}
 	}
 

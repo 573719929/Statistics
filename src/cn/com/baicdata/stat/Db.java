@@ -26,10 +26,11 @@ import org.apache.thrift.transport.TSocket;
 import org.apache.thrift.transport.TTransport;
 import org.apache.thrift.transport.TTransportException;
 
+import redis.clients.jedis.Jedis;
+
 import com.adp.java.AdPlan;
 import com.adp.java.PlanStatus;
 import com.adp.java.ReportFormService;
-import com.mongodb.BasicDBList;
 import com.mongodb.BasicDBObject;
 import com.mongodb.DBCollection;
 import com.mongodb.DBCursor;
@@ -42,24 +43,19 @@ public class Db {
 	private static final byte CREATIVE = 0x38; // 56
 	private static final byte SHOW = 0x3c; // 60
 	private static final byte CLICK = 0x3e; // 62
-	private int readafter = 0;
-	private int saveafter = 0;
 	private String url = "jdbc:mysql://%s:33966/adp?useUnicode=true&characterEncoding=UTF-8&useFastDateParsing=false";
 	private String user = "baicdata";
 	private String password = "j8verXE8WZnDNXPV";
 	private Connection conn = null;
-	private HashMap<String, CacheNode> cache; // 推送状态缓存 push_id => status, host,
-												// ad_space, bid_price
+	// 推送状态缓存 push_id => status, host, ad_space, bid_price
 	private HashMap<String, String[]> adcache; // 广告信息缓存
 	private HashMap<Integer, Double> UserCD;
 	private HashMap<Integer, Double> PlanCD;
 	private String mongohost;
 	private String mysqlhost;
+	private Jedis jedis;
 
-	public Db(int readafter, int saveafter, String host1, String host2) {
-		this.readafter = readafter;
-		this.saveafter = saveafter;
-		this.cache = new HashMap<String, CacheNode>();
+	public Db(String host1, String host2, String redis) {
 		this.adcache = new HashMap<String, String[]>();
 		this.UserCD = new HashMap<Integer, Double>();
 		this.PlanCD = new HashMap<Integer, Double>();
@@ -69,18 +65,18 @@ public class Db {
 			e.printStackTrace();
 		}
 		try {
-			this.conn = DriverManager.getConnection(
-					String.format(this.url, host1), this.user, this.password);
+			this.conn = DriverManager.getConnection(String.format(this.url, host1), this.user, this.password);
 		} catch (SQLException e) {
 			e.printStackTrace();
 		}
+		this.jedis = new Jedis(redis, 61933);
 		this.mysqlhost = host1;
 		this.mongohost = host2;
 	}
 
 	public double GetBidprice(String pushid) {
-		if (this.cache.containsKey(pushid)) {
-			return this.cache.get(pushid).getBidprice();
+		if (this.jedis.exists(pushid)) {
+			return Double.parseDouble(this.jedis.lrange(pushid, 3, 3).get(0));
 		} else {
 			return 0;
 		}
@@ -128,84 +124,15 @@ public class Db {
 		}
 	}
 
-	public void read(String filenames[]) {
-		for (String f : filenames) {
-			File fp = new File(f);
-			if (fp.exists()) {
-				BufferedReader br = null;
-				try {
-					br = new BufferedReader(new InputStreamReader(
-							new FileInputStream(fp)));
-				} catch (FileNotFoundException e) {
-					e.printStackTrace();
-				}
-				if (br != null) {
-					String line = null;
-					try {
-						line = br.readLine();
-					} catch (IOException e) {
-						e.printStackTrace();
-					}
-					while (line != null) {
-						String[] segments = line.split("\t");
-						if (segments.length == 5) {
-							this.cache.put(
-									segments[0],
-									new CacheNode(Byte.valueOf(segments[1]),
-											segments[2], segments[3], Float
-													.parseFloat(segments[4])));
-						}
-						try {
-							line = br.readLine();
-						} catch (IOException e) {
-							e.printStackTrace();
-						}
-					}
-				}
-				try {
-					br.close();
-				} catch (IOException e) {
-					e.printStackTrace();
-				}
-			}
-		}
-	}
-
-	public void save(String filenames[]) {
-		List<FileWriter> lf = new ArrayList<FileWriter>();
-		for (String f : filenames) {
-			try {
-				lf.add(new FileWriter(f));
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
-
-		}
-		for (String pushid : this.cache.keySet()) {
-			CacheNode cn = this.cache.get(pushid);
-			for (FileWriter fw : lf) {
-				try {
-					fw.write(String.format("%s\t%d\t%s\t%s\t%.10f\n", pushid,
-							cn.getStatus(), cn.getHost(), cn.getAdspace(),
-							cn.getBidprice()));
-				} catch (IOException e) {
-					e.printStackTrace();
-				}
-			}
-		}
-		for (FileWriter fw : lf) {
-			try {
-				fw.close();
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
-		}
-	}
 
 	public String getHost(String id) {
-		if (this.cache.containsKey(id)) {
-			CacheNode cn = this.cache.get(id);
-			return String.format("%s,%s", cn.getHost(), cn.getAdspace());
+		if (this.jedis.exists(id)) {
+			List<String>r2 = this.jedis.lrange(id, 0, 4);
+			String []r = new String[4];
+			for(int i = 0; i <4; i++) {
+				r[i] = r2.get(i);
+			}
+			return String.format("%s,%s", r[1], r[2]);
 		} else {
 			return ",";
 		}
@@ -233,27 +160,17 @@ public class Db {
 	}
 
 	private void set(String pushid, byte status) {
-		if (!this.cache.containsKey(pushid)) {
-			this.cache.put(pushid, new CacheNode(status, "", "", (float) 0.0));
-		}
-		this.cache.get(pushid).setStatus(status);
+		this.jedis.lpop(pushid);
+		this.jedis.lpush(pushid, new String(new byte[]{status}));
 	}
 
 	public void BID(String pushid, String host, String adspace, String bidprice) {
-		this.set(pushid, Db.BID);
-		if (!this.cache.containsKey(pushid)) {
-			this.cache.put(pushid, new CacheNode(Db.BID, host, adspace,
-					(float) 0.0));
-		} else {
-			CacheNode r = this.cache.get(pushid);
-			r.setHost(host);
-			r.setAdspace(adspace);
-			try {
-				r.setBidprice(Float.parseFloat(bidprice));
-			} catch (Exception e) {
-				;
-			}
-		}
+		this.jedis.del(pushid);
+		this.jedis.rpush(pushid, new String(new byte[]{Db.BID}));
+		this.jedis.expire(pushid, 125);
+		this.jedis.rpush(pushid, host);
+		this.jedis.rpush(pushid, adspace);
+		this.jedis.rpush(pushid, bidprice);
 	}
 
 	public void BIDRES(String pushid) {
@@ -273,31 +190,27 @@ public class Db {
 	}
 
 	public boolean isValidBid(String pushid) {
-		boolean r = !this.cache.containsKey(pushid);
+		boolean r = ! this.jedis.exists(pushid);
 		return r;
 	}
 
 	public boolean isValidBidres(String pushid) {
-		boolean r = this.cache.containsKey(pushid)
-				&& this.cache.get(pushid).getStatus() == Db.BID;
+		boolean r = this.jedis.exists(pushid) && this.jedis.lrange(pushid, 0, 0).get(0).getBytes()[0] == Db.BID;
 		return r;
 	}
 
 	public boolean isValidCreative(String pushid) {
-		boolean r = this.cache.containsKey(pushid)
-				&& this.cache.get(pushid).getStatus() == Db.BIDRES;
+		boolean r = this.jedis.exists(pushid) && this.jedis.lrange(pushid, 0, 0).get(0).getBytes()[0] == Db.BIDRES;
 		return r;
 	}
 
 	public boolean isValidShow(String pushid) {
-		boolean r = this.cache.containsKey(pushid)
-				&& this.cache.get(pushid).getStatus() == Db.CREATIVE;
+		boolean r = this.jedis.exists(pushid) && this.jedis.lrange(pushid, 0, 0).get(0).getBytes()[0] == Db.CREATIVE;
 		return r;
 	}
 
 	public boolean isValidClick(String pushid) {
-		boolean r = this.cache.containsKey(pushid)
-				&& this.cache.get(pushid).getStatus() == Db.SHOW;
+		boolean r = this.jedis.exists(pushid) && this.jedis.lrange(pushid, 0, 0).get(0).getBytes()[0] == Db.SHOW;
 		return r;
 	}
 
@@ -311,39 +224,39 @@ public class Db {
 		}
 		if (mongo != null) {
 			for (int userid : this.UserCD.keySet()) {
-				System.out.println("userid: "+userid);
-				System.out.println("charge: "+this.UserCD.get(userid));
+//				System.out.println("userid: "+userid);
+//				System.out.println("charge: "+this.UserCD.get(userid));
 				double account = this.getAccount(userid);
-				System.out.println("account before: "+account);
+//				System.out.println("account before: "+account);
 				this.CutDownUser(userid, this.UserCD.get(userid));
 				account = this.getAccount(userid);
-				System.out.println("account after: "+account);
+//				System.out.println("account after: "+account);
 				
 				
 				if ( account <= 0) {
 					this.StopAllPlan(userid);
-					System.out.println("Stop all <uid:"+userid+">");
+//					System.out.println("Stop all <uid:"+userid+">");
 				} else {
-					System.out.println("Do nothing");
+//					System.out.println("Do nothing");
 				}
-				System.out.println();
+//				System.out.println();
 			}
-			System.out.println();
+//			System.out.println();
 			for (int planid : this.PlanCD.keySet()) {
-				System.out.println("planid: "+planid);
+//				System.out.println("planid: "+planid);
 				double budget = this.getBudget(planid);
-				System.out.println("budget: "+budget);
+//				System.out.println("budget: "+budget);
 				
 				double daycost = this.getDayCost(mongo, planid);
 				
-				System.out.println("daycost: "+daycost);
+//				System.out.println("daycost: "+daycost);
 				if (budget >= 0 && daycost > budget) {
 					this.StopAPlan(planid);
-					System.out.println("Stop a plan <pid:"+planid+">");
+//					System.out.println("Stop a plan <pid:"+planid+">");
 				} else {
-					System.out.println("do nothing");
+//					System.out.println("do nothing");
 				}
-				System.out.println();
+//				System.out.println();
 			}
 		}
 		mongo.close();
@@ -357,7 +270,6 @@ public class Db {
 			e1.printStackTrace();
 		}
 		String sql = "select budget from adp_plan_info where plan_id=" + pid;
-		System.out.println("["+sql+"]");
 		ResultSet rs = null;
 		try {
 			rs = statement.executeQuery(sql);
@@ -423,14 +335,10 @@ public class Db {
 		query.put("Day", Integer.parseInt(today));
 		DBObject key = new BasicDBObject();
 		key.put("cost", true);
-		System.out.println(query);
-		System.out.println(key);
 		DBCursor b = col.find(query, key);
 		ret = 0;
 		while (b.hasNext()) {
-			DBObject t = b.next();
-			Object coco = t.get("cost");
-			ret += Double.parseDouble(coco.toString());
+			ret += Double.parseDouble(b.next().get("cost").toString());
 		}
 		return ret;
 	}
@@ -497,9 +405,8 @@ public class Db {
 	private void CutDownUser(int uid, Double charge) {
 		Statement statement = null;
 		try {
-			statement = conn.createStatement();
-			String sql = "update adp_user_info set account=account-" + String.format("%s", charge) + " where uid=" + uid;
-			System.out.println("["+sql+"]");
+			statement = this.conn.createStatement();
+			String sql = String.format("update adp_user_info set account=account-%.10f where uid=%d", charge, uid);
 			statement.executeUpdate(sql);
 			statement.close();
 		} catch (SQLException e) {
@@ -507,3 +414,4 @@ public class Db {
 		}
 	}
 }
+

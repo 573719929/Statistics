@@ -1,6 +1,7 @@
 package cn.com.baicdata.stat;
 
-public class CacheNode {
+public class CacheNode2 {
+	/*
 	private byte status;
 	private String host;
 	private String adspace;
@@ -22,4 +23,5 @@ public class CacheNode {
 	
 	public float getBidprice() { return this.bidprice; }
 	public void setBidprice(float bidprice) { this.bidprice = bidprice; }
+	*/
 }
