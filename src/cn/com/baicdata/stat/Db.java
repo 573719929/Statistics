@@ -1,12 +1,6 @@
 package cn.com.baicdata.stat;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.io.InputStreamReader;
+
 import java.net.UnknownHostException;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -27,6 +21,7 @@ import org.apache.thrift.transport.TTransport;
 import org.apache.thrift.transport.TTransportException;
 
 import redis.clients.jedis.Jedis;
+import redis.clients.jedis.Pipeline;
 
 import com.adp.java.AdPlan;
 import com.adp.java.PlanStatus;
@@ -38,27 +33,35 @@ import com.mongodb.DBObject;
 import com.mongodb.Mongo;
 
 public class Db {
-	private static final byte BID = 0x20; // 32
-	private static final byte BIDRES = 0x30; // 48
-	private static final byte CREATIVE = 0x38; // 56
-	private static final byte SHOW = 0x3c; // 60
-	private static final byte CLICK = 0x3e; // 62
+
+	private static final String BID = "\u0020";
+	private static final String BIDRES = "\u0030";
+	private static final String CREATIVE = "\u0038";
+	private static final String SHOW = "\u003c";
+	private static final String CLICK = "\003e";
+	
 	private String url = "jdbc:mysql://%s:33966/adp?useUnicode=true&characterEncoding=UTF-8&useFastDateParsing=false";
 	private String user = "baicdata";
 	private String password = "j8verXE8WZnDNXPV";
 	private Connection conn = null;
 	// 推送状态缓存 push_id => status, host, ad_space, bid_price
-	private HashMap<String, String[]> adcache; // 广告信息缓存
+	private HashMap<Integer, int[]> adcache; // 广告信息缓存
 	private HashMap<Integer, Double> UserCD;
 	private HashMap<Integer, Double> PlanCD;
+	private HashMap<Integer, float[]> RateCache;
+
+	private HashMap<Integer, Integer> OwnerCache;
 	private String mongohost;
 	private String mysqlhost;
 	private Jedis jedis;
-
+	private Pipeline pipeline;
 	public Db(String host1, String host2, String redis) {
-		this.adcache = new HashMap<String, String[]>();
+		this.adcache = new HashMap<Integer, int[]>();
 		this.UserCD = new HashMap<Integer, Double>();
 		this.PlanCD = new HashMap<Integer, Double>();
+		this.RateCache = new HashMap<Integer, float[]>();
+		this.OwnerCache = new HashMap<Integer, Integer>();
+
 		try {
 			Class.forName("com.mysql.jdbc.Driver");
 		} catch (ClassNotFoundException e) {
@@ -70,148 +73,219 @@ public class Db {
 			e.printStackTrace();
 		}
 		this.jedis = new Jedis(redis, 61933);
+		this.pipeline = this.jedis.pipelined();
 		this.mysqlhost = host1;
 		this.mongohost = host2;
 	}
 
-	public double GetBidprice(String pushid) {
-		if (this.jedis.exists(pushid)) {
-			return Double.parseDouble(this.jedis.lrange(pushid, 3, 3).get(0));
-		} else {
-			return 0;
+	public float GetBidprice(String pushid) {
+		try {
+			return Float.parseFloat(this.jedis.lrange(pushid, 3, 3).get(0));
+		} catch (Exception e) {
+			return -1;
 		}
 	}
 
-	public String[] GetAdInfo(String id) {
-		if (this.adcache.containsKey(id)) {
-			return this.adcache.get(id);
+	public int getOwner(int adid) {
+		try {
+			return this.OwnerCache.get(adid);
+		} catch (Exception e) {
+			Statement statement = null;
+			ResultSet rs = null;
+			try {
+				int uid = -1;
+				statement = this.conn.createStatement();
+				String sql = String.format("select uid from adp_ad_info where adid=%d limit 1", adid);
+				rs = statement.executeQuery(sql);
+				while (rs.next()) uid = rs.getInt("uid");
+				rs.close();
+				statement.close();
+				this.OwnerCache.put(adid, uid);
+				return uid;
+			} catch (SQLException e1) {
+				e1.printStackTrace();
+				return -1;
+			} finally {
+				if (rs != null) {
+					try {
+						rs.close();
+					} catch (SQLException e1) {
+						e1.printStackTrace();
+					}
+				}
+				if (statement != null) {
+					try {
+						statement.close();
+					} catch (SQLException e1) {
+						e1.printStackTrace();
+					}
+				}
+			}
+		}
+	}
+
+	public int[] GetAdInfo(int adid) {
+		int[] ret = this.adcache.get(adid);
+		if (ret != null) {
+			return ret;
 		} else {
-			int i = 0;
-			String a = "";
-			for (i = 0; i < id.length() && id.charAt(i) == '0'; i++)
-				;
-			if (i == id.length())
-				a = "0";
-			else
-				a = id.substring(i);
-			String adid = "";
-			for (i = 0; i < a.length(); i++)
-				if (a.charAt(i) <= '9' && a.charAt(i) >= '0')
-					adid += a.charAt(i);
-			if (adid.equals(""))
-				adid = "0";
-			String[] ret = { adid, "", "", "", "" }; // adid, uid, plan_id,
-														// group_id, stuffid
+			ret = new int[]{ adid, 0, 0, 0, 0 }; // adid, uid, plan_id, group_id, stuffid
 			try {
 				String sql = String
 						.format("select a.adid as adid, a.uid as uid, a.group_id as group_id, a.plan_id as plan_id, b.stuff_id as stuffid from adp_ad_info a left join adp_stuff_info b on a.adid = b.adid where a.adid=%s limit 1",
 								adid);
-				Statement statement = conn.createStatement();
+				Statement statement = this.conn.createStatement();
 				ResultSet rs = statement.executeQuery(sql);
 				while (rs.next()) {
-					ret[1] = rs.getString("uid");
-					ret[2] = rs.getString("plan_id");
-					ret[3] = rs.getString("group_id");
-					ret[4] = rs.getString("stuffid");
+					ret[1] = rs.getInt("uid");
+					ret[2] = rs.getInt("plan_id");
+					ret[3] = rs.getInt("group_id");
+					ret[4] = rs.getInt("stuffid");
 				}
 				rs.close();
 				statement.close();
-			} catch (SQLException e) {
-				e.printStackTrace();
+			} catch (SQLException e1) {
+				e1.printStackTrace();
 			}
-			this.adcache.put(id, ret);
+			this.adcache.put(adid, ret);
 			return ret;
 		}
 	}
 
-
 	public String getHost(String id) {
-		if (this.jedis.exists(id)) {
-			List<String>r2 = this.jedis.lrange(id, 0, 4);
-			String []r = new String[4];
-			for(int i = 0; i <4; i++) {
+		try {
+			List<String> r2 = this.jedis.lrange(id, 0, 4);
+			String[] r = new String[4];
+			for (int i = 0; i < 4; i++) {
 				r[i] = r2.get(i);
 			}
 			return String.format("%s,%s", r[1], r[2]);
-		} else {
+		} catch (Exception e) {
 			return ",";
 		}
 	}
 
 	public void CutDown(int userid, int planid, double cost) {
-		if (this.UserCD.containsKey(userid)) {
+		try {
 			this.UserCD.put(userid, this.UserCD.get(userid) + cost);
-		} else {
+		} catch (Exception e) {
 			this.UserCD.put(userid, cost);
 		}
-		if (this.PlanCD.containsKey(planid)) {
+		try {
 			this.PlanCD.put(planid, this.PlanCD.get(planid) + cost);
-		} else {
+		} catch (Exception e) {
 			this.PlanCD.put(planid, cost);
 		}
 	}
-
-	public float GetY(String userid) {
-		return (float) 0.04;
-	}
-
-	public float GetX(String userid) {
-		return (float) 0.3;
-	}
-
-	private void set(String pushid, byte status) {
-		this.jedis.lpop(pushid);
-		this.jedis.lpush(pushid, new String(new byte[]{status}));
+	public float[] GetRate(int userid) {
+		float ret[] = this.RateCache.get(userid);
+		if (ret != null) {
+			return ret;
+		} else {
+			Statement statement = null;
+			try {
+				statement = conn.createStatement();
+			} catch (SQLException e1) {
+				e1.printStackTrace();
+			}
+			String sql = "select diffrate, supportfee from adp_user_info where uid=" + userid+" limit 1";
+			ResultSet rs = null;
+			try {
+				rs = statement.executeQuery(sql);
+			} catch (SQLException e1) {
+				e1.printStackTrace();
+			}
+			try {
+				while (rs.next()) { ret = new float[]{rs.getFloat("diffrate"), rs.getFloat("supportfee")}; }
+			} catch (SQLException e1) {
+				e1.printStackTrace();
+			}
+			try {
+				rs.close();
+			} catch (SQLException e1) {
+				e1.printStackTrace();
+			}
+			try {
+				statement.close();
+			} catch (SQLException e1) {
+				e1.printStackTrace();
+			}
+			if (ret == null) {	
+				return new float[] {0, 0};
+			} else {
+				this.RateCache.put(userid, ret);
+				return ret;
+			}
+		}
 	}
 
 	public void BID(String pushid, String host, String adspace, String bidprice) {
-		this.jedis.del(pushid);
-		this.jedis.rpush(pushid, new String(new byte[]{Db.BID}));
-		this.jedis.expire(pushid, 125);
-		this.jedis.rpush(pushid, host);
-		this.jedis.rpush(pushid, adspace);
-		this.jedis.rpush(pushid, bidprice);
+		this.pipeline.del(pushid);
+		this.pipeline.rpush(pushid, Db.BID);
+		this.pipeline.expire(pushid, 225);
+		this.pipeline.rpush(pushid, host);
+		this.pipeline.rpush(pushid, adspace);
+		this.pipeline.rpush(pushid, bidprice);
+	}
+	public void SYNC() {
+		try { this.pipeline.sync(); } catch (Exception e) {}
+		this.pipeline = this.jedis.pipelined();
 	}
 
 	public void BIDRES(String pushid) {
-		this.set(pushid, Db.BIDRES);
+		this.jedis.lpop(pushid);
+		this.jedis.lpush(pushid, Db.BIDRES);
 	}
 
 	public void CREATIVE(String pushid) {
-		this.set(pushid, Db.CREATIVE);
+		this.jedis.lpop(pushid);
+		this.jedis.lpush(pushid, Db.CREATIVE);
 	}
 
 	public void SHOW(String pushid) {
-		this.set(pushid, Db.SHOW);
+		this.jedis.lpop(pushid);
+		this.jedis.lpush(pushid, Db.SHOW);
 	}
 
 	public void CLICK(String pushid) {
-		this.set(pushid, Db.CLICK);
+		this.jedis.lpop(pushid);
+		this.jedis.lpush(pushid, Db.CLICK);
 	}
 
 	public boolean isValidBid(String pushid) {
-		boolean r = ! this.jedis.exists(pushid);
-		return r;
+		return !this.jedis.exists(pushid);
 	}
 
 	public boolean isValidBidres(String pushid) {
-		boolean r = this.jedis.exists(pushid) && this.jedis.lrange(pushid, 0, 0).get(0).getBytes()[0] == Db.BID;
-		return r;
+		try {
+			return this.jedis.lrange(pushid, 0, 0).get(0).equals(Db.BID);
+		} catch (Exception e) {
+			return false;
+		}
 	}
 
 	public boolean isValidCreative(String pushid) {
-		boolean r = this.jedis.exists(pushid) && this.jedis.lrange(pushid, 0, 0).get(0).getBytes()[0] == Db.BIDRES;
-		return r;
+		try {
+			return this.jedis.lrange(pushid, 0, 0).get(0).equals(Db.BIDRES);
+		} catch (Exception e) {
+			return false;
+		}
 	}
 
 	public boolean isValidShow(String pushid) {
-		boolean r = this.jedis.exists(pushid) && this.jedis.lrange(pushid, 0, 0).get(0).getBytes()[0] == Db.CREATIVE;
-		return r;
+		try {
+			return this.jedis.lrange(pushid, 0, 0).get(0).equals(Db.CREATIVE);
+		} catch (Exception e) {
+			return false;
+		}
 	}
 
 	public boolean isValidClick(String pushid) {
-		boolean r = this.jedis.exists(pushid) && this.jedis.lrange(pushid, 0, 0).get(0).getBytes()[0] == Db.SHOW;
-		return r;
+		try {
+			return this.jedis.lrange(pushid, 0, 0).get(0).equals(Db.SHOW);
+		} catch (Exception e) {
+			return false;
+		}
 	}
 
 	public void processCutDown() {
@@ -224,39 +298,19 @@ public class Db {
 		}
 		if (mongo != null) {
 			for (int userid : this.UserCD.keySet()) {
-//				System.out.println("userid: "+userid);
-//				System.out.println("charge: "+this.UserCD.get(userid));
-				double account = this.getAccount(userid);
-//				System.out.println("account before: "+account);
 				this.CutDownUser(userid, this.UserCD.get(userid));
-				account = this.getAccount(userid);
-//				System.out.println("account after: "+account);
-				
-				
-				if ( account <= 0) {
+				double account = this.getAccount(userid);
+				if (account <= 0) {
 					this.StopAllPlan(userid);
-//					System.out.println("Stop all <uid:"+userid+">");
-				} else {
-//					System.out.println("Do nothing");
+					System.out.println("Stop all <uid:" + userid + ">");
 				}
-//				System.out.println();
 			}
-//			System.out.println();
 			for (int planid : this.PlanCD.keySet()) {
-//				System.out.println("planid: "+planid);
-				double budget = this.getBudget(planid);
-//				System.out.println("budget: "+budget);
-				
-				double daycost = this.getDayCost(mongo, planid);
-				
-//				System.out.println("daycost: "+daycost);
+				double budget = this.getBudget(planid), daycost = this.getDayCost(mongo, planid);
 				if (budget >= 0 && daycost > budget) {
 					this.StopAPlan(planid);
-//					System.out.println("Stop a plan <pid:"+planid+">");
-				} else {
-//					System.out.println("do nothing");
+					System.out.println("Stop a plan <pid:" + planid + ">");
 				}
-//				System.out.println();
 			}
 		}
 		mongo.close();
@@ -278,8 +332,12 @@ public class Db {
 		}
 		double budget = -1;
 		try {
-			while (rs.next())
-				budget = rs.getFloat("budget");
+			while (rs.next()) budget = rs.getFloat("budget");
+		} catch (SQLException e) {
+			e.printStackTrace();
+		}
+		try {
+			rs.close();
 		} catch (SQLException e) {
 			e.printStackTrace();
 		}
@@ -307,8 +365,7 @@ public class Db {
 		}
 		double account = -1;
 		try {
-			while (rs.next())
-				account = rs.getFloat("account");
+			while (rs.next()) account = rs.getFloat("account");
 		} catch (SQLException e) {
 			e.printStackTrace();
 		}
@@ -326,20 +383,17 @@ public class Db {
 	}
 
 	public double getDayCost(Mongo mongo, int pid) {
-		double ret = -1;
 		Date d = new Date();
 		String today = new SimpleDateFormat("yyyyMMdd").format(d);
-		DBCollection col = mongo.getDB("StatV2").getCollection("Detail");
+		DBCollection col = mongo.getDB(Statd.DATABASE).getCollection(Statd.COLLECTION);
 		DBObject query = new BasicDBObject();
-		query.put("Planid", pid);
-		query.put("Day", Integer.parseInt(today));
+		query.put(Statd.PLANID, pid);
+		query.put(Statd.DAY, Integer.parseInt(today));
 		DBObject key = new BasicDBObject();
-		key.put("cost", true);
+		key.put(Statd.COST, true);
 		DBCursor b = col.find(query, key);
-		ret = 0;
-		while (b.hasNext()) {
-			ret += Double.parseDouble(b.next().get("cost").toString());
-		}
+		double ret = 0;
+		while (b.hasNext()) ret += Double.parseDouble(b.next().get(Statd.COST).toString());
 		return ret;
 	}
 
@@ -350,16 +404,15 @@ public class Db {
 		ReportFormService.Client client = new ReportFormService.Client(protocol);
 		try {
 			transport.open();
-		} catch (TTransportException e1) {
-			e1.printStackTrace();
+		} catch (TTransportException e) {
+			e.printStackTrace();
 		}
 		try {
-			System.out.println("stop plan:" + pid + "("
-					+ client.updateAdPlanStatus(pid, PlanStatus.STOPPED) + ")");
-		} catch (NumberFormatException e1) {
-			e1.printStackTrace();
-		} catch (TException e1) {
-			e1.printStackTrace();
+			System.out.println("stop plan:" + pid + "(" + client.updateAdPlanStatus(pid, PlanStatus.STOPPED) + ")");
+		} catch (NumberFormatException e) {
+			e.printStackTrace();
+		} catch (TException e) {
+			e.printStackTrace();
 		}
 		transport.close();
 	}
@@ -371,15 +424,13 @@ public class Db {
 		ReportFormService.Client client = new ReportFormService.Client(protocol);
 		try {
 			transport.open();
-		} catch (TTransportException e1) {
-			e1.printStackTrace();
+		} catch (TTransportException e) {
+			e.printStackTrace();
 		}
 		ArrayList<String> pids = new ArrayList<String>();
 		try {
 			List<AdPlan> a = client.getAdPlansByUid(uid);
-			for (AdPlan ap : a) {
-				pids.add(String.valueOf(ap.plan_id));
-			}
+			for (AdPlan ap : a) pids.add(String.valueOf(ap.plan_id));
 		} catch (NumberFormatException e) {
 			e.printStackTrace();
 		} catch (TException e) {
@@ -387,15 +438,11 @@ public class Db {
 		}
 		for (String pid : pids) {
 			try {
-				System.out.println("frozen plan:"
-						+ pid
-						+ "("
-						+ client.updateAdPlanStatus(Integer.parseInt(pid),
-								PlanStatus.STOPPED) + ")");
-			} catch (NumberFormatException e1) {
-				e1.printStackTrace();
-			} catch (TException e1) {
-				e1.printStackTrace();
+				System.out.println("frozen plan:" + pid + "(" + client.updateAdPlanStatus(Integer.parseInt(pid), PlanStatus.STOPPED) + ")");
+			} catch (NumberFormatException e) {
+				e.printStackTrace();
+			} catch (TException e) {
+				e.printStackTrace();
 			}
 		}
 		transport.close();
@@ -414,4 +461,3 @@ public class Db {
 		}
 	}
 }
-
