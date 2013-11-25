@@ -1,5 +1,8 @@
 package cn.com.baicdata.stat;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.net.UnknownHostException;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -11,6 +14,9 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
 
 import org.apache.thrift.TException;
 import org.apache.thrift.protocol.TBinaryProtocol;
@@ -65,13 +71,13 @@ public class Db {
 		try {
 			Class.forName("com.mysql.jdbc.Driver");
 		} catch (ClassNotFoundException e) {
-			// e.printStackTrace();
+			 e.printStackTrace();
 		}
 		try {
 			this.conn = DriverManager.getConnection(
 					String.format(this.url, host1), this.user, this.password);
 		} catch (SQLException e) {
-			// e.printStackTrace();
+			 e.printStackTrace();
 		}
 		this.jedis = new Jedis(redis, 61933);
 		this.pipeline = this.jedis.pipelined();
@@ -114,14 +120,14 @@ public class Db {
 					try {
 						rs.close();
 					} catch (SQLException e1) {
-						// e1.printStackTrace();
+						 e1.printStackTrace();
 					}
 				}
 				if (statement != null) {
 					try {
 						statement.close();
 					} catch (SQLException e1) {
-						// e1.printStackTrace();
+						 e1.printStackTrace();
 					}
 				}
 			}
@@ -230,12 +236,15 @@ public class Db {
 	}
 
 	public void BID(String pushid, String host, String adspace, String bidprice) {
-		this.pipeline.del(pushid);
-		this.pipeline.rpush(pushid, Db.BID);
-		this.pipeline.expire(pushid, 90);
-		this.pipeline.rpush(pushid, host);
-		this.pipeline.rpush(pushid, adspace);
-		this.pipeline.rpush(pushid, bidprice);
+		try {
+			this.pipeline.del(pushid);
+			this.pipeline.rpush(pushid, Db.BID);
+			this.pipeline.expire(pushid, 360);
+			this.pipeline.rpush(pushid, host);
+			this.pipeline.rpush(pushid, adspace);
+			this.pipeline.rpush(pushid, bidprice);
+		} catch (Exception e) {
+		}
 	}
 
 	public void SYNC() {
@@ -247,27 +256,39 @@ public class Db {
 	}
 
 	public void BIDRES(String pushid) {
-		this.jedis.expire(pushid, 90);
-		this.jedis.lpop(pushid);
-		this.jedis.lpush(pushid, Db.BIDRES);
+		try {
+			this.jedis.expire(pushid, 360);
+			this.jedis.lpop(pushid);
+			this.jedis.lpush(pushid, Db.BIDRES);
+		} catch (Exception e) {
+		}
 	}
 
 	public void CREATIVE(String pushid) {
-		this.jedis.expire(pushid, 90);
-		this.jedis.lpop(pushid);
-		this.jedis.lpush(pushid, Db.CREATIVE);
+		try {
+			this.jedis.expire(pushid, 360);
+			this.jedis.lpop(pushid);
+			this.jedis.lpush(pushid, Db.CREATIVE);
+		} catch (Exception e) {
+		}
 	}
 
 	public void SHOW(String pushid) {
-		this.jedis.expire(pushid, 90);
-		this.jedis.lpop(pushid);
-		this.jedis.lpush(pushid, Db.SHOW);
+		try {
+			this.jedis.expire(pushid, 360);
+			this.jedis.lpop(pushid);
+			this.jedis.lpush(pushid, Db.SHOW);
+		} catch (Exception e) {
+		}
 	}
 
 	public void CLICK(String pushid) {
-		this.jedis.expire(pushid, 5);
-		this.jedis.lpop(pushid);
-		this.jedis.lpush(pushid, Db.CLICK);
+		try {
+			this.jedis.expire(pushid, 1);
+			this.jedis.lpop(pushid);
+			this.jedis.lpush(pushid, Db.CLICK);
+		} catch (Exception e) {
+		}
 	}
 
 	public boolean isValidBid(String pushid) {
@@ -320,7 +341,7 @@ public class Db {
 				double account = this.getAccount(userid);
 				if (account <= 0) {
 					this.StopAllPlan(userid);
-					System.out.println("Stop all <uid:" + userid + ">");
+					// System.out.println("Stop all <uid:" + userid + ">");
 				}
 			}
 			for (int planid : this.PlanCD.keySet()) {
@@ -328,7 +349,7 @@ public class Db {
 						.getDayCost(mongo, planid);
 				if (budget >= 0 && daycost > budget) {
 					this.StopAPlan(planid);
-					System.out.println("Stop a plan <pid:" + planid + ">");
+					// System.out.println("Stop a plan <pid:" + planid + ">");
 				}
 			}
 		}
@@ -370,7 +391,7 @@ public class Db {
 	}
 
 	private double getAccount(int uid) {
-		String sql = "select account from adp_user_info where uid=" + uid;
+		String sql = "select account from adp_user_info where uid=" + uid + " limit 1";
 		Statement statement = null;
 		try {
 			statement = conn.createStatement();
@@ -407,7 +428,7 @@ public class Db {
 		Date d = new Date();
 		String today = new SimpleDateFormat("yyyyMMdd").format(d);
 		DBCollection col = mongo.getDB(Statd.DATABASE).getCollection(
-				Statd.COLLECTION);
+				Statd.HourDetail);
 		DBObject query = new BasicDBObject();
 		query.put(Statd.PLANID, pid);
 		query.put(Statd.DAY, Integer.parseInt(today));
@@ -431,8 +452,7 @@ public class Db {
 			// e.printStackTrace();
 		}
 		try {
-			System.out.println("stop plan:" + pid + "("
-					+ client.updateAdPlanStatus(pid, PlanStatus.STOPPED) + ")");
+			client.updateAdPlanStatus(pid, PlanStatus.STOPPED);
 		} catch (NumberFormatException e) {
 			// e.printStackTrace();
 		} catch (TException e) {
@@ -463,11 +483,8 @@ public class Db {
 		}
 		for (String pid : pids) {
 			try {
-				System.out.println("frozen plan:"
-						+ pid
-						+ "("
-						+ client.updateAdPlanStatus(Integer.parseInt(pid),
-								PlanStatus.STOPPED) + ")");
+				client.updateAdPlanStatus(Integer.parseInt(pid),
+						PlanStatus.STOPPED);
 			} catch (NumberFormatException e) {
 				// e.printStackTrace();
 			} catch (TException e) {
@@ -490,5 +507,99 @@ public class Db {
 		} catch (SQLException e) {
 			// e.printStackTrace();
 		}
+	}
+
+	/**
+	 * 压缩字符串为 byte[] 储存可以使用new sun.misc.BASE64Encoder().encodeBuffer(byte[] b)方法
+	 * 保存为字符串
+	 * 
+	 * @param str
+	 *            压缩前的文本
+	 * @return
+	 */
+	public static final byte[] compress(String str) {
+		if (str == null)
+			return null;
+
+		byte[] compressed;
+		ByteArrayOutputStream out = null;
+		ZipOutputStream zout = null;
+
+		try {
+			out = new ByteArrayOutputStream();
+			zout = new ZipOutputStream(out);
+			zout.putNextEntry(new ZipEntry("0"));
+			zout.write(str.getBytes());
+			zout.closeEntry();
+			compressed = out.toByteArray();
+		} catch (IOException e) {
+			compressed = null;
+		} finally {
+			if (zout != null) {
+				try {
+					zout.close();
+				} catch (IOException e) {
+				}
+			}
+			if (out != null) {
+				try {
+					out.close();
+				} catch (IOException e) {
+				}
+			}
+		}
+
+		return compressed;
+	}
+
+	/**
+	 * 将压缩后的 byte[] 数据解压缩
+	 * 
+	 * @param compressed
+	 *            压缩后的 byte[] 数据
+	 * @return 解压后的字符串
+	 */
+	public static final String decompress(byte[] compressed) {
+		if (compressed == null)
+			return null;
+
+		ByteArrayOutputStream out = null;
+		ByteArrayInputStream in = null;
+		ZipInputStream zin = null;
+		String decompressed;
+		try {
+			out = new ByteArrayOutputStream();
+			in = new ByteArrayInputStream(compressed);
+			zin = new ZipInputStream(in);
+			byte[] buffer = new byte[1024];
+			int offset = -1;
+			while ((offset = zin.read(buffer)) != -1) {
+				out.write(buffer, 0, offset);
+			}
+			decompressed = out.toString();
+		} catch (IOException e) {
+			decompressed = null;
+		} finally {
+			if (zin != null) {
+				try {
+					zin.close();
+				} catch (IOException e) {
+				}
+			}
+			if (in != null) {
+				try {
+					in.close();
+				} catch (IOException e) {
+				}
+			}
+			if (out != null) {
+				try {
+					out.close();
+				} catch (IOException e) {
+				}
+			}
+		}
+
+		return decompressed;
 	}
 }

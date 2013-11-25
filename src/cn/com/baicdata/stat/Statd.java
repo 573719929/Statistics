@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.UnknownHostException;
 import java.text.SimpleDateFormat;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 
@@ -19,13 +20,21 @@ import org.apache.commons.cli.PosixParser;
 
 import com.mongodb.BasicDBObject;
 import com.mongodb.DBCollection;
-import com.mongodb.DBObject;
 import com.mongodb.Mongo;
 
 public class Statd {
 
-	public static final String COLLECTION = "DETAIL";
-	public static final String DATABASE = "STAT";
+//	public static final String COLLECTION = "DETAIL";
+
+	public static final String HourDetail = "HourDetail";
+	public static final String AreaDetail = "AreaDetail";
+	public static final String SourceDetail = "SourceDetail";
+	public static final String HostDetail = "HostDetail";
+	public static final String AdspaceDetail = "AdspaceDetail";
+
+	public static final String KeyFormatter = "%s,%s,%s";
+
+	public static final String DATABASE = "StatV3";
 
 	public static final String RBID = " rtb_bid";
 	public static final String RBIDRES = " rtb_bidres";
@@ -40,38 +49,37 @@ public class Statd {
 	public static final int TSHOW = 3;
 	public static final int TCLICK = 4;
 
-	public static final String USERID = "U";
-	public static final String AREAID = "A";
-	public static final String DAY = "D";
-	public static final String HOUR = "H";
-	public static final String SOURCE = "S";
-	public static final String HOST = "M";
-	public static final String ADSPACE = "W";
-	public static final String PLANID = "P";
-	public static final String GROUPID = "G";
-	public static final String ADID = "I";
-	public static final String STUFFID = "F";
+	public static final String USERID = "USERID";
+	public static final String AREA = "AREA";
+	public static final String DAY = "DAY";
+	public static final String HOUR = "HOUR";
+	public static final String SOURCE = "SOURCE";
+	public static final String HOST = "HOST";
+	public static final String ADSPACE = "ADSPACE";
+	public static final String PLANID = "PLANID";
+	public static final String GROUPID = "GROUPID";
+	public static final String ADID = "ADID";
+	public static final String STUFFID = "STUFFID";
 
-	public static final String BID = "b";
-	public static final String BIDRES = "r";
-	public static final String CREATIVE = "p";
-	public static final String SHOW = "s";
-	public static final String CLICK = "c";
-	public static final String COST = "o";
-	public static final String SELFCOST = "t";
+	public static final String BID = "bid";
+	public static final String BIDRES = "bidres";
+	public static final String CREATIVE = "push";
+	public static final String SHOW = "show";
+	public static final String CLICK = "click";
+	public static final String COST = "cost";
+	public static final String SELFCOST = "selfcost";
 
 	public static final String SEPARATOR = "\u0001";
-	private static final String KEYFORMAT = "%s,%s,%s,%s,%s,%s,%s";
 
 	private static final String ZERO = "0";
 
 	public static void TAG(String Message) {
-		System.out.println(String.format("%s %s", new SimpleDateFormat(
+		System.err.println(String.format("%s %s", new SimpleDateFormat(
 				"yyyy-MM-dd HH:mm:ss SS").format(new Date()), Message));
 	}
 
 	public static void NTAG(String Message) {
-		System.out.println(String.format("%s %s", System.nanoTime(), Message));
+		System.err.println(String.format("%s %s", System.nanoTime(), Message));
 	}
 
 	public static String getday(String datetime) {
@@ -106,7 +114,7 @@ public class Statd {
 		try {
 			cl = new PosixParser().parse(options, args);
 		} catch (ParseException e) {
-			 e.printStackTrace();
+			e.printStackTrace();
 		}
 		if (cl == null || !cl.hasOption("f") || !cl.hasOption("adp")
 				|| !cl.hasOption("stat") || !cl.hasOption("cache")) {
@@ -117,6 +125,12 @@ public class Statd {
 					.getOptionValue("stat"), redis = cl.getOptionValue("cache");
 			Db d = new Db(mysql, mongoh, redis);
 			HashMap<String, double[]> data = new HashMap<String, double[]>();
+			HashMap<String, double[]> HourData = new HashMap<String, double[]>();
+			HashMap<String, double[]> AreaData = new HashMap<String, double[]>();
+			HashMap<String, double[]> HostData = new HashMap<String, double[]>();
+			HashMap<String, double[]> AdspaceData = new HashMap<String, double[]>();
+			HashMap<String, double[]> SourceData = new HashMap<String, double[]>();
+			String HourKey = null, AreaKey = null, HostKey = null, AdspaceKey = null, SourceKey = null;
 			TAG("Start read log ...");
 			for (String f : cl.getOptionValue("f").split(",")) {
 				File fp = new File(f);
@@ -126,7 +140,7 @@ public class Statd {
 						br = new BufferedReader(new InputStreamReader(
 								new FileInputStream(fp)));
 					} catch (FileNotFoundException e) {
-						 e.printStackTrace();
+						e.printStackTrace();
 					}
 					if (br != null) {
 						String line = null;
@@ -137,10 +151,9 @@ public class Statd {
 						}
 						while (line != null) {
 							try {
-								String Record = null;
 								double cost = -1.0d, fee = 0.0d;
 								String[] segments = line.split(Statd.SEPARATOR);
-								int Type = Statd.TNOTHING, len = segments.length, Adid = 0, Userid = 0;
+								int Type = Statd.TNOTHING, len = segments.length, Userid = 0;
 								if (len > 4) {
 									if (len >= 33
 											&& segments[0].equals(Statd.RBID)) {
@@ -148,14 +161,22 @@ public class Statd {
 											Type = Statd.TBID;
 											d.BID(segments[7], segments[22],
 													segments[24], segments[32]);
-											Record = String.format(
-													Statd.KEYFORMAT,
-													segments[10],
-													getday(segments[4]),
-													gethour(segments[4]),
-													segments[2], segments[22],
-													segments[24],
-													ltrim(segments[6]));
+											String adid = ltrim(segments[6]), day = getday(segments[4]);
+											HourKey = String.format(
+													Statd.KeyFormatter, adid,
+													day, gethour(segments[4]));
+											AreaKey = String.format(
+													Statd.KeyFormatter, adid,
+													day, segments[10]);
+											HostKey = String.format(
+													Statd.KeyFormatter, adid,
+													day, segments[22]);
+											AdspaceKey = String.format(
+													Statd.KeyFormatter, adid,
+													day, segments[24]);
+											SourceKey = String.format(
+													Statd.KeyFormatter, adid,
+													day, segments[2]);
 										}
 									} else if (len >= 11
 											&& segments[0]
@@ -166,8 +187,8 @@ public class Statd {
 													.getHost(segments[7])
 													.split(",");
 											Userid = d
-													.getOwner((Adid = Integer
-															.parseInt(ltrim(segments[6]))));
+													.getOwner(Integer
+															.parseInt(ltrim(segments[6])));
 											try {
 												cost = Double
 														.parseDouble(segments[9]);
@@ -179,27 +200,35 @@ public class Statd {
 													if (bidprice >= cost) {
 														float rate[] = d
 																.GetRate(Userid);
-														fee = (cost + Math
-																.min(cost,
-																		(bidprice - cost)
-																				* rate[0]))
-																* (1 + rate[1]);
+														fee = (cost + Math.min(cost, (bidprice - cost) * rate[0])) * (1 + rate[1]);
 													} else {
 														fee = cost;
 													}
 													Type = Statd.TBIDRES;
 													d.BIDRES(segments[7]);
-													Record = String
-															.format("%s,%s,%s,%s,%s,%s,%d",
-																	segments[10],
-																	getday(segments[4]),
-																	gethour(segments[4]),
-																	segments[2],
-																	ha[0],
-																	ha[1], Adid);
+													String adid = ltrim(segments[6]), day = getday(segments[4]);
+													HourKey = String
+															.format(Statd.KeyFormatter,
+																	adid,
+																	day,
+																	gethour(segments[4]));
+													AreaKey = String.format(
+															Statd.KeyFormatter,
+															adid, day,
+															segments[10]);
+													HostKey = String.format(
+															Statd.KeyFormatter,
+															adid, day, ha[0]);
+													AdspaceKey = String.format(
+															Statd.KeyFormatter,
+															adid, day, ha[1]);
+													SourceKey = String.format(
+															Statd.KeyFormatter,
+															adid, day,
+															segments[2]);
 												}
 											} catch (Exception e) {
-												 e.printStackTrace();
+												e.printStackTrace();
 											}
 										}
 									} else if (len >= 11
@@ -212,80 +241,123 @@ public class Statd {
 													.split(",");
 											Type = Statd.TCREATIVE;
 											d.CREATIVE(segments[8]);
-											Record = String.format(
-													Statd.KEYFORMAT,
-													segments[10],
-													getday(segments[4]),
-													gethour(segments[4]),
-													segments[2], ha[0], ha[1],
-													ltrim(segments[6]));
+											String adid = ltrim(segments[6]), day = getday(segments[4]);
+											HourKey = String.format(
+													Statd.KeyFormatter, adid,
+													day, gethour(segments[4]));
+											AreaKey = String.format(
+													Statd.KeyFormatter, adid,
+													day, segments[10]);
+											HostKey = String.format(
+													Statd.KeyFormatter, adid,
+													day, ha[0]);
+											AdspaceKey = String.format(
+													Statd.KeyFormatter, adid,
+													day, ha[1]);
+											SourceKey = String.format(
+													Statd.KeyFormatter, adid,
+													day, segments[2]);
 										}
-									} else if (len >= 10
-											&& segments[0].equals(Statd.RSHOW)) {
+									} else if (len >= 10 && segments[0].equals(Statd.RSHOW)) {
 										d.SYNC();
 										if (d.isValidShow(segments[7])) {
-											String ha[] = d
-													.getHost(segments[7])
-													.split(",");
+											String ha[] = d.getHost(segments[7]).split(",");
 											Type = Statd.TSHOW;
 											d.SHOW(segments[7]);
-											Record = String.format(
-													Statd.KEYFORMAT,
-													segments[9],
-													getday(segments[4]),
-													gethour(segments[4]),
-													segments[2], ha[0], ha[1],
-													ltrim(segments[6]));
+											String adid = ltrim(segments[6]), day = getday(segments[4]);
+											HourKey = String.format(Statd.KeyFormatter, adid, day, gethour(segments[4]));
+											AreaKey = String.format(Statd.KeyFormatter, adid, day, segments[9]);
+											HostKey = String.format(Statd.KeyFormatter, adid, day, ha[0]);
+											AdspaceKey = String.format(Statd.KeyFormatter, adid, day, ha[1]);
+											SourceKey = String.format(Statd.KeyFormatter, adid, day, segments[2]);
 										}
-									} else if (len >= 10
-											&& segments[0].equals(Statd.RCLICK)) {
+									} else if (len >= 10 && segments[0].equals(Statd.RCLICK)) {
 										d.SYNC();
 										if (d.isValidClick(segments[7])) {
-											String ha[] = d
-													.getHost(segments[7])
-													.split(",");
+											String ha[] = d.getHost(segments[7]).split(",");
 											Type = Statd.TCLICK;
 											d.CLICK(segments[7]);
-											Record = String.format(
-													Statd.KEYFORMAT,
-													segments[9],
-													getday(segments[4]),
-													gethour(segments[4]),
-													segments[2], ha[0], ha[1],
-													ltrim(segments[6]));
+											String adid = ltrim(segments[6]), day = getday(segments[4]);
+											HourKey = String.format(Statd.KeyFormatter, adid, day, gethour(segments[4]));
+											AreaKey = String.format(Statd.KeyFormatter, adid, day, segments[9]);
+											HostKey = String.format(Statd.KeyFormatter, adid, day, ha[0]);
+											AdspaceKey = String.format(Statd.KeyFormatter, adid, day, ha[1]);
+											SourceKey = String.format(Statd.KeyFormatter, adid, day, segments[2]);
 										}
 									}
 								}
 								if (Type != Statd.TNOTHING) {
 									double t[] = null;
-									if (!data.containsKey(Record)) {
-										data.put(Record, (t = new double[] { 0,
-												0, 0, 0, 0, 0, 0 }));
-									} else {
-										t = data.get(Record);
-									}
+									if (!HourData.containsKey(HourKey))
+										HourData.put(HourKey,
+												(t = new double[] { 0, 0, 0, 0,
+														0, 0, 0 }));
+									else
+										t = HourData.get(HourKey);
 									if (Type == Statd.TBIDRES) {
-										++t[Statd.TBIDRES];
 										t[5] += fee;
 										t[6] += cost;
-									} else {
-										++t[Type];
 									}
+									++t[Type];
+									if (!AreaData.containsKey(AreaKey))
+										AreaData.put(AreaKey,
+												(t = new double[] { 0, 0, 0, 0,
+														0, 0, 0 }));
+									else
+										t = AreaData.get(AreaKey);
+									if (Type == Statd.TBIDRES) {
+										t[5] += fee;
+										t[6] += cost;
+									}
+									++t[Type];
+									if (!SourceData.containsKey(SourceKey))
+										SourceData.put(SourceKey,
+												(t = new double[] { 0, 0, 0, 0,
+														0, 0, 0 }));
+									else
+										t = SourceData.get(SourceKey);
+									if (Type == Statd.TBIDRES) {
+										t[5] += fee;
+										t[6] += cost;
+									}
+									++t[Type];
+									if (!HostData.containsKey(HostKey))
+										HostData.put(HostKey,
+												(t = new double[] { 0, 0, 0, 0,
+														0, 0, 0 }));
+									else
+										t = HostData.get(HostKey);
+									if (Type == Statd.TBIDRES) {
+										t[5] += fee;
+										t[6] += cost;
+									}
+									++t[Type];
+									if (!AdspaceData.containsKey(AdspaceKey))
+										AdspaceData.put(AdspaceKey,
+												(t = new double[] { 0, 0, 0, 0,
+														0, 0, 0 }));
+									else
+										t = AdspaceData.get(AdspaceKey);
+									if (Type == Statd.TBIDRES) {
+										t[5] += fee;
+										t[6] += cost;
+									}
+									++t[Type];
 								}
 							} catch (Exception e) {
-								 e.printStackTrace();
+								e.printStackTrace();
 							}
 							try {
 								line = br.readLine();
 							} catch (IOException e) {
 								line = null;
-								 e.printStackTrace();
+								e.printStackTrace();
 							}
 						}
 						try {
 							br.close();
 						} catch (IOException e) {
-							 e.printStackTrace();
+							e.printStackTrace();
 						}
 					}
 				}
@@ -297,47 +369,162 @@ public class Statd {
 			try {
 				mongo = new Mongo(mongoh, 12331);
 			} catch (UnknownHostException e) {
-				 e.printStackTrace();
+				e.printStackTrace();
 			}
-			if (mongo != null) {
+			if (mongo != null || true) {
 				TAG("Write mongo ...");
-				DBCollection col = mongo.getDB(Statd.DATABASE)
-						.getCollection(Statd.COLLECTION);
+				DBCollection col = mongo.getDB(Statd.DATABASE).getCollection(Statd.HourDetail);
 				BasicDBObject query = new BasicDBObject(), document = new BasicDBObject(), r1 = new BasicDBObject();
 				int userid = 0, planid = 0;
 				double userplancost = 0;
-				for (String r : data.keySet()) {
+				for (String r : HourData.keySet()) {
 					try {
-						double cn[] = data.get(r);
+						double cn[] = HourData.get(r);
+//						System.out.println(r + ":" + Arrays.toString(cn));
 						r1.clear();
 						r1.put(Statd.BID, (int) cn[0]);
 						r1.put(Statd.BIDRES, (int) cn[1]);
 						r1.put(Statd.CREATIVE, (int) cn[2]);
 						r1.put(Statd.SHOW, (int) cn[3]);
 						r1.put(Statd.CLICK, (int) cn[4]);
-						userplancost = cn[5] / 1000;
-						r1.put(Statd.COST, userplancost); // 用户花费
-						r1.put(Statd.SELFCOST, cn[6] / 1000); // 成本
-
+						r1.put(Statd.COST, (userplancost = cn[5] / 1000));
+						r1.put(Statd.SELFCOST, cn[6] / 1000);
 						document.put("$inc", r1);
+						query.clear();
 						query.put("_id", r);
 						String seg[] = r.split(",");
-						query.put(Statd.AREAID, Integer.parseInt(seg[0]));
 						query.put(Statd.DAY, Integer.parseInt(seg[1]));
 						query.put(Statd.HOUR, Integer.parseInt(seg[2]));
-						query.put(Statd.SOURCE, seg[3]);
-						query.put(Statd.HOST, seg[4]);
-						query.put(Statd.ADSPACE, seg[5]);
-						int[] info = d.GetAdInfo(Integer.parseInt(seg[6]));
+						int[] info = d.GetAdInfo(Integer.parseInt(seg[0]));
 						query.put(Statd.USERID, (userid = info[1]));
 						query.put(Statd.PLANID, (planid = info[2]));
-						query.put(Statd.GROUPID, info[3]);
 						query.put(Statd.ADID, info[0]);
+						query.put(Statd.GROUPID, info[3]);
 						query.put(Statd.STUFFID, info[4]);
 						d.CutDown(userid, planid, userplancost);
 						col.update(query, document, true, false);
 					} catch (Exception e) {
-						 e.printStackTrace();
+						e.printStackTrace();
+					}
+				}
+				col = mongo.getDB(Statd.DATABASE).getCollection(Statd.AreaDetail);
+				for (String r : AreaData.keySet()) {
+					try {
+						double cn[] = AreaData.get(r);
+//						System.out.println(r + ":" + Arrays.toString(cn));
+						r1.clear();
+						r1.put(Statd.BID, (int) cn[0]);
+						r1.put(Statd.BIDRES, (int) cn[1]);
+						r1.put(Statd.CREATIVE, (int) cn[2]);
+						r1.put(Statd.SHOW, (int) cn[3]);
+						r1.put(Statd.CLICK, (int) cn[4]);
+						r1.put(Statd.COST, (userplancost = cn[5] / 1000));
+						r1.put(Statd.SELFCOST, cn[6] / 1000);
+						document.put("$inc", r1);
+						query.clear();
+						query.put("_id", r);
+						String seg[] = r.split(",");
+						int[] info = d.GetAdInfo(Integer.parseInt(seg[0]));
+						query.put(Statd.ADID, info[0]);
+						query.put(Statd.USERID, info[1]);
+						query.put(Statd.PLANID, info[2]);
+						query.put(Statd.GROUPID, info[3]);
+						query.put(Statd.STUFFID, info[4]);
+						query.put(Statd.DAY, Integer.parseInt(seg[1]));
+						query.put(Statd.AREA, Integer.parseInt(seg[2]));
+						col.update(query, document, true, false);
+					} catch (Exception e) {
+						e.printStackTrace();
+					}
+				}
+				col = mongo.getDB(Statd.DATABASE).getCollection(Statd.SourceDetail);
+				for (String r : SourceData.keySet()) {
+					try {
+						double cn[] = SourceData.get(r);
+//						System.out.println(r + ":" + Arrays.toString(cn));
+						r1.clear();
+						r1.put(Statd.BID, (int) cn[0]);
+						r1.put(Statd.BIDRES, (int) cn[1]);
+						r1.put(Statd.CREATIVE, (int) cn[2]);
+						r1.put(Statd.SHOW, (int) cn[3]);
+						r1.put(Statd.CLICK, (int) cn[4]);
+						r1.put(Statd.COST, (userplancost = cn[5] / 1000));
+						r1.put(Statd.SELFCOST, cn[6] / 1000);
+						document.put("$inc", r1);
+						query.clear();
+						query.put("_id", r);
+						String seg[] = r.split(",");
+						query.put(Statd.DAY, Integer.parseInt(seg[1]));
+						query.put(Statd.SOURCE, seg[2]);
+						int[] info = d.GetAdInfo(Integer.parseInt(seg[0]));
+						query.put(Statd.ADID, info[0]);
+						query.put(Statd.USERID, info[1]);
+						query.put(Statd.PLANID, info[2]);
+						query.put(Statd.GROUPID, info[3]);
+						query.put(Statd.STUFFID, info[4]);
+						col.update(query, document, true, false);
+					} catch (Exception e) {
+						e.printStackTrace();
+					}
+				}
+				col = mongo.getDB(Statd.DATABASE).getCollection(Statd.HostDetail);
+				for (String r : HostData.keySet()) {
+					try {
+						double cn[] = HostData.get(r);
+//						System.out.println(r + ":" + Arrays.toString(cn));
+						r1.clear();
+						r1.put(Statd.BID, (int) cn[0]);
+						r1.put(Statd.BIDRES, (int) cn[1]);
+						r1.put(Statd.CREATIVE, (int) cn[2]);
+						r1.put(Statd.SHOW, (int) cn[3]);
+						r1.put(Statd.CLICK, (int) cn[4]);
+						r1.put(Statd.COST, (userplancost = cn[5] / 1000));
+						r1.put(Statd.SELFCOST, cn[6] / 1000);
+						document.put("$inc", r1);
+						query.clear();
+						query.put("_id", r);
+						String seg[] = r.split(",");
+						query.put(Statd.DAY, Integer.parseInt(seg[1]));
+						query.put(Statd.HOST, seg[2]);
+						int[] info = d.GetAdInfo(Integer.parseInt(seg[0]));
+						query.put(Statd.ADID, info[0]);
+						query.put(Statd.USERID, info[1]);
+						query.put(Statd.PLANID, info[2]);
+						query.put(Statd.GROUPID, info[3]);
+						query.put(Statd.STUFFID, info[4]);
+						col.update(query, document, true, false);
+					} catch (Exception e) {
+						e.printStackTrace();
+					}
+				}
+				col = mongo.getDB(Statd.DATABASE).getCollection(Statd.AdspaceDetail);
+				for (String r : AdspaceData.keySet()) {
+					try {
+						double cn[] = AdspaceData.get(r);
+//						System.out.println(r + ":" + Arrays.toString(cn));
+						r1.clear();
+						r1.put(Statd.BID, (int) cn[0]);
+						r1.put(Statd.BIDRES, (int) cn[1]);
+						r1.put(Statd.CREATIVE, (int) cn[2]);
+						r1.put(Statd.SHOW, (int) cn[3]);
+						r1.put(Statd.CLICK, (int) cn[4]);
+						r1.put(Statd.COST, (userplancost = cn[5] / 1000));
+						r1.put(Statd.SELFCOST, cn[6] / 1000);
+						document.put("$inc", r1);
+						query.clear();
+						query.put("_id", r);
+						String seg[] = r.split(",");
+						query.put(Statd.DAY, Integer.parseInt(seg[1]));
+						query.put(Statd.ADSPACE, seg[2]);
+						int[] info = d.GetAdInfo(Integer.parseInt(seg[0]));
+						query.put(Statd.ADID, info[0]);
+						query.put(Statd.USERID, info[1]);
+						query.put(Statd.PLANID, info[2]);
+						query.put(Statd.GROUPID, info[3]);
+						query.put(Statd.STUFFID, info[4]);
+						col.update(query, document, true, false);
+					} catch (Exception e) {
+						e.printStackTrace();
 					}
 				}
 				TAG("Write complete !");
