@@ -44,6 +44,12 @@ public class Db {
 	private static final String CREATIVE = "\u0038";
 	private static final String SHOW = "\u003c";
 	private static final String CLICK = "\003e";
+	
+	private static final byte _B_BID = '\u0020'; 	 //'\u0020'; 	// 0000 0000 0010 0000
+	private static final byte _B_BIDRES = '\u0010';	 //'\u0030';	// 0000 0000 0001 0000
+	private static final byte _B_CREATIVE = '\u0008';//'\u0038'; 	// 0000 0000 0000 1000
+	private static final byte _B_SHOW = '\u0004';	 //'\u003c'; 	// 0000 0000 0000 0100
+	private static final byte _B_CLICK = '\u0002';	 //'\u003e'; 	// 0000 0000 0000 0010
 
 	private String url = "jdbc:mysql://%s:33966/adp?useUnicode=true&characterEncoding=UTF-8&useFastDateParsing=false";
 	private String user = "baicdata";
@@ -58,7 +64,7 @@ public class Db {
 	private HashMap<Integer, Integer> OwnerCache;
 	private String mongohost;
 	private String mysqlhost;
-	private Jedis jedis;
+	public Jedis jedis;
 	private Pipeline pipeline;
 
 	public Db(String host1, String host2, String redis) {
@@ -239,11 +245,13 @@ public class Db {
 		try {
 			this.pipeline.del(pushid);
 			this.pipeline.rpush(pushid, Db.BID);
-			this.pipeline.expire(pushid, 360);
 			this.pipeline.rpush(pushid, host);
 			this.pipeline.rpush(pushid, adspace);
 			this.pipeline.rpush(pushid, bidprice);
+			this.pipeline.expire(pushid, 360);
+
 		} catch (Exception e) {
+			e.printStackTrace();
 		}
 	}
 
@@ -251,6 +259,7 @@ public class Db {
 		try {
 			this.pipeline.sync();
 		} catch (Exception e) {
+			e.printStackTrace();
 		}
 		this.pipeline = this.jedis.pipelined();
 	}
@@ -258,36 +267,40 @@ public class Db {
 	public void BIDRES(String pushid) {
 		try {
 			this.jedis.expire(pushid, 360);
-			this.jedis.lpop(pushid);
-			this.jedis.lpush(pushid, Db.BIDRES);
+			String c =this.jedis.lpop(pushid);
+			this.jedis.lpush(pushid, new String(new byte[]{(byte) (Db._B_BIDRES | c.getBytes()[0])}));
 		} catch (Exception e) {
+			e.printStackTrace();
 		}
 	}
 
 	public void CREATIVE(String pushid) {
 		try {
 			this.jedis.expire(pushid, 360);
-			this.jedis.lpop(pushid);
-			this.jedis.lpush(pushid, Db.CREATIVE);
+			String c =this.jedis.lpop(pushid);
+			this.jedis.lpush(pushid, new String(new byte[]{(byte) (Db._B_CREATIVE | c.getBytes()[0])}));
 		} catch (Exception e) {
+			e.printStackTrace();
 		}
 	}
 
 	public void SHOW(String pushid) {
 		try {
 			this.jedis.expire(pushid, 360);
-			this.jedis.lpop(pushid);
-			this.jedis.lpush(pushid, Db.SHOW);
+			String c =this.jedis.lpop(pushid);
+			this.jedis.lpush(pushid, new String(new byte[]{(byte) (Db._B_SHOW | c.getBytes()[0])}));
 		} catch (Exception e) {
+			e.printStackTrace();
 		}
 	}
 
 	public void CLICK(String pushid) {
 		try {
-			this.jedis.expire(pushid, 1);
-			this.jedis.lpop(pushid);
-			this.jedis.lpush(pushid, Db.CLICK);
+			this.jedis.expire(pushid, 10);
+			String c =this.jedis.lpop(pushid);
+			this.jedis.lpush(pushid, new String(new byte[]{(byte) (Db._B_CLICK | c.getBytes()[0])}));
 		} catch (Exception e) {
+			e.printStackTrace();
 		}
 	}
 
@@ -297,33 +310,37 @@ public class Db {
 
 	public boolean isValidBidres(String pushid) {
 		try {
-			return this.jedis.lrange(pushid, 0, 0).get(0).equals(Db.BID);
+			byte c = this.jedis.lrange(pushid, 0, 1).get(0).getBytes()[0];
+			return (c & Db._B_BIDRES) == 0;
 		} catch (Exception e) {
-			return false;
+			return true;
 		}
 	}
 
 	public boolean isValidCreative(String pushid) {
 		try {
-			return this.jedis.lrange(pushid, 0, 0).get(0).equals(Db.BIDRES);
+			byte c = this.jedis.lrange(pushid, 0, 1).get(0).getBytes()[0];
+			return (c & Db._B_CREATIVE) == 0;
 		} catch (Exception e) {
-			return false;
+			return true;
 		}
 	}
 
 	public boolean isValidShow(String pushid) {
 		try {
-			return this.jedis.lrange(pushid, 0, 0).get(0).equals(Db.CREATIVE);
+			byte c = this.jedis.lrange(pushid, 0, 1).get(0).getBytes()[0];
+			return (c & Db._B_SHOW) == 0;
 		} catch (Exception e) {
-			return false;
+			return true;
 		}
 	}
 
 	public boolean isValidClick(String pushid) {
 		try {
-			return this.jedis.lrange(pushid, 0, 0).get(0).equals(Db.SHOW);
+			byte c = this.jedis.lrange(pushid, 0, 1).get(0).getBytes()[0];
+			return (c & Db._B_CLICK) == 0;
 		} catch (Exception e) {
-			return false;
+			return true;
 		}
 	}
 
@@ -375,7 +392,7 @@ public class Db {
 			while (rs.next())
 				budget = rs.getFloat("budget");
 		} catch (SQLException e) {
-			// e.printStackTrace();
+			// e.printStackTrace();          /* Exception in thread "main" java.lang.AbstractMethodError: java.lang.Exception.printStackTrace()V */
 		}
 		try {
 			rs.close();
