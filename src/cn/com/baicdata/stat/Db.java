@@ -65,6 +65,7 @@ public class Db {
 	private String mongohost;
 	private String mysqlhost;
 	public Jedis jedis;
+	public Jedis j2;
 	private Pipeline pipeline;
 
 	public Db(String host1, String host2, String redis) {
@@ -86,6 +87,7 @@ public class Db {
 			 e.printStackTrace();
 		}
 		this.jedis = new Jedis(redis, 61933);
+		this.j2 = new Jedis(redis, 61934);
 		this.pipeline = this.jedis.pipelined();
 		this.mysqlhost = host1;
 		this.mongohost = host2;
@@ -171,12 +173,12 @@ public class Db {
 
 	public String getHost(String id) {
 		try {
-			List<String> r2 = this.jedis.lrange(id, 0, 4);
-			String[] r = new String[4];
-			for (int i = 0; i < 4; i++) {
+			List<String> r2 = this.jedis.lrange(id, 0, 5);
+			String[] r = new String[5];
+			for (int i = 0; i < 5; i++) {
 				r[i] = r2.get(i);
 			}
-			return String.format("%s,%s", r[1], r[2]);
+			return String.format("%s,%s,%s", r[1], r[2], r[4]);
 		} catch (Exception e) {
 			return null;
 		}
@@ -241,14 +243,19 @@ public class Db {
 		}
 	}
 
-	public void BID(String pushid, String host, String adspace, String bidprice) {
+	public void BID(String pushid, String host, String adspace, String bidprice, String info) {
 		try {
+			// host, view_type, view_location, size, rtb_source
+			// into = view_type, view_location, size, rtb_source
 			this.pipeline.del(pushid);
 			this.pipeline.rpush(pushid, Db.BID);
 			this.pipeline.rpush(pushid, host);
 			this.pipeline.rpush(pushid, adspace);
 			this.pipeline.rpush(pushid, bidprice);
+			this.pipeline.rpush(pushid, info);
 			this.pipeline.expire(pushid, 360);
+			
+
 
 		} catch (Exception e) {
 			e.printStackTrace();
