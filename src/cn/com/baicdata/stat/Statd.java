@@ -37,7 +37,7 @@ public class Statd {
 
 	public static final String KeyFormatter = "%s,%s,%s";
 
-	public static final String DATABASE = "StatV3";
+	public static final String DATABASE = "StatV3_Test";
 
 	public static final String RBID = " rtb_bid";
 	public static final String RBIDRES = " rtb_bidres";
@@ -102,14 +102,19 @@ public class Statd {
 	}
 
 	/**
-	 * @param line 
-	 * @param d 
-	 * @param HourData 
+	 * @param line
+	 * @param d
+	 * @param HourData
 	 * @param args
 	 */
-	public static void parseLine(String line, Db d, 
-			HashMap<String, double[]> HourData, HashMap<String, double[]> AreaData, HashMap<String, double[]> HostData, HashMap<String, double[]> AdspaceData, HashMap<String, double[]> SourceData, HashMap<String, int[]> AdsData, 
-			HashSet<String>errorBidres, HashSet<String> errorShow, HashSet<String> errorClick) {
+	public static void parseLine(String line, Db d,
+			HashMap<String, double[]> HourData,
+			HashMap<String, double[]> AreaData,
+			HashMap<String, double[]> HostData,
+			HashMap<String, double[]> AdspaceData,
+			HashMap<String, double[]> SourceData,
+			HashMap<String, int[]> AdsData, HashSet<String> errorBidres,
+			HashSet<String> errorShow, HashSet<String> errorClick) {
 		String HourKey = null, AreaKey = null, HostKey = null, AdspaceKey = null, SourceKey = null, AdsKey = null;
 		try {
 			double cost = -1.0d, fee = 0.0d;
@@ -119,50 +124,84 @@ public class Statd {
 				if (len >= 33 && segments[0].equals(Statd.RBID)) {
 					if (true) {
 						Type = Statd.TBID;
-						
-						d.BID(segments[7], segments[22], segments[24], segments[32], 
-								String.format("%s|%s|%sX%s|%s", segments[21], segments[33], segments[26], segments[27], segments[2]));
+
+						d.BID(segments[7], segments[22], segments[24],
+								segments[32], String
+										.format("%s|%s|%sX%s|%s", segments[21],
+												segments[33], segments[26],
+												segments[27], segments[2]));
 						// into = view_type, view_location, size, rtb_source
 						String adid = ltrim(segments[6]), day = getday(segments[4]);
-						HourKey = String.format(Statd.KeyFormatter, adid, day, gethour(segments[4]));
-						AreaKey = String.format(Statd.KeyFormatter, adid, day, segments[10]);
-						HostKey = String.format(Statd.KeyFormatter, adid, day, segments[22]);
-						AdspaceKey = String.format(Statd.KeyFormatter, adid, day, segments[24]);
-						SourceKey = String.format(Statd.KeyFormatter, adid, day, segments[2]);
+						HourKey = String.format(Statd.KeyFormatter, adid, day,
+								gethour(segments[4]));
+						AreaKey = String.format(Statd.KeyFormatter, adid, day,
+								segments[10]);
+						HostKey = String.format(Statd.KeyFormatter, adid, day,
+								segments[22]);
+						AdspaceKey = String.format(Statd.KeyFormatter, adid,
+								day, segments[24]);
+						SourceKey = String.format(Statd.KeyFormatter, adid,
+								day, segments[2]);
 					}
 				} else if (len >= 11 && segments[0].equals(Statd.RBIDRES)) {
 					d.SYNC();
 					try {
 						if (d.isValidBidres(segments[7])) {
 							String ha[] = d.getHost(segments[7]).split(",");
-							Userid = d.getOwner(Integer.parseInt(ltrim(segments[6])));
+							float[] info = d.getOwner(Integer
+									.parseInt(ltrim(segments[6])));
+							Userid = (int) info[0];
+							int usertype = (int) info[1];
 							cost = Double.parseDouble(segments[9]);
 							double bidprice = d.GetBidprice(segments[7]);
 							if (cost > 10 || cost < 0) {
 								cost = fee = 0.0d;
 							} else {
-								if (bidprice >= cost) {
-									float rate[] = d.GetRate(Userid);
-									fee = (cost + Math.min(cost, (bidprice - cost) * rate[0])) * (1 + rate[1]);
-								} else {
+
+								switch (usertype) {
+								case 1:
+									if (bidprice >= cost) {
+										float rate[] = d.GetRate(Userid);
+										fee = (cost + Math.min(cost,
+												(bidprice - cost) * rate[0]))
+												* (1 + rate[1]);
+									} else {
+										fee = cost;
+									}
+									break;
+								case 2:
+									fee = info[2];
+									break;
+								case 3:
+									fee = 0;
+									break;
+								case 0:
 									fee = cost;
+									break;
+								default:
+									break;
 								}
-								
+
 								String adid = ltrim(segments[6]), day = getday(segments[4]);
-								HourKey = String.format(Statd.KeyFormatter, adid, day, gethour(segments[4]));
-								AreaKey = String.format(Statd.KeyFormatter, adid, day, segments[10]);
-								
-								HostKey = String.format(Statd.KeyFormatter, adid, day, ha[0]);
-								AdspaceKey = String.format(Statd.KeyFormatter, adid, day, ha[1]);
-								SourceKey = String.format(Statd.KeyFormatter, adid, day, segments[2]);
-								// host, view_type, view_location, size, rtb_source
+								HourKey = String.format(Statd.KeyFormatter,
+										adid, day, gethour(segments[4]));
+								AreaKey = String.format(Statd.KeyFormatter,
+										adid, day, segments[10]);
+
+								HostKey = String.format(Statd.KeyFormatter,
+										adid, day, ha[0]);
+								AdspaceKey = String.format(Statd.KeyFormatter,
+										adid, day, ha[1]);
+								SourceKey = String.format(Statd.KeyFormatter,
+										adid, day, segments[2]);
+								// host, view_type, view_location, size,
+								// rtb_source
 								AdsKey = String.format("%s|%s", ha[0], ha[2]);
 								Type = Statd.TBIDRES;
 								d.BIDRES(segments[7]);
 							}
 						}
-					}
-					catch (Exception e) {
+					} catch (Exception e) {
 						errorBidres.add(line);
 					}
 				} else if (len >= 11 && segments[0].equals(Statd.RCREATIVE)) {
@@ -172,11 +211,16 @@ public class Statd {
 						Type = Statd.TCREATIVE;
 						d.CREATIVE(segments[8]);
 						String adid = ltrim(segments[6]), day = getday(segments[4]);
-						HourKey = String.format(Statd.KeyFormatter, adid, day, gethour(segments[4]));
-						AreaKey = String.format(Statd.KeyFormatter, adid, day, segments[10]);
-						HostKey = String.format(Statd.KeyFormatter, adid, day, ha[0]);
-						AdspaceKey = String.format(Statd.KeyFormatter, adid, day, ha[1]);
-						SourceKey = String.format(Statd.KeyFormatter, adid, day, segments[2]);
+						HourKey = String.format(Statd.KeyFormatter, adid, day,
+								gethour(segments[4]));
+						AreaKey = String.format(Statd.KeyFormatter, adid, day,
+								segments[10]);
+						HostKey = String.format(Statd.KeyFormatter, adid, day,
+								ha[0]);
+						AdspaceKey = String.format(Statd.KeyFormatter, adid,
+								day, ha[1]);
+						SourceKey = String.format(Statd.KeyFormatter, adid,
+								day, segments[2]);
 					}
 				} else if (len >= 10 && segments[0].equals(Statd.RSHOW)) {
 					d.SYNC();
@@ -186,11 +230,16 @@ public class Statd {
 							Type = Statd.TSHOW;
 							d.SHOW(segments[7]);
 							String adid = ltrim(segments[6]), day = getday(segments[4]);
-							HourKey = String.format(Statd.KeyFormatter, adid, day, gethour(segments[4]));
-							AreaKey = String.format(Statd.KeyFormatter, adid, day, segments[9]);
-							HostKey = String.format(Statd.KeyFormatter, adid, day, ha[0]);
-							AdspaceKey = String.format(Statd.KeyFormatter, adid, day, ha[1]);
-							SourceKey = String.format(Statd.KeyFormatter, adid, day, segments[2]);
+							HourKey = String.format(Statd.KeyFormatter, adid,
+									day, gethour(segments[4]));
+							AreaKey = String.format(Statd.KeyFormatter, adid,
+									day, segments[9]);
+							HostKey = String.format(Statd.KeyFormatter, adid,
+									day, ha[0]);
+							AdspaceKey = String.format(Statd.KeyFormatter,
+									adid, day, ha[1]);
+							SourceKey = String.format(Statd.KeyFormatter, adid,
+									day, segments[2]);
 							// host, view_type, view_location, size, rtb_source
 							AdsKey = String.format("%s|%s", ha[0], ha[2]);
 						}
@@ -205,11 +254,23 @@ public class Statd {
 							Type = Statd.TCLICK;
 							d.CLICK(segments[7]);
 							String adid = ltrim(segments[6]), day = getday(segments[4]);
-							HourKey = String.format(Statd.KeyFormatter, adid, day, gethour(segments[4]));
-							AreaKey = String.format(Statd.KeyFormatter, adid, day, segments[9]);
-							HostKey = String.format(Statd.KeyFormatter, adid, day, ha[0]);
-							AdspaceKey = String.format(Statd.KeyFormatter, adid, day, ha[1]);
-							SourceKey = String.format(Statd.KeyFormatter, adid, day, segments[2]);
+							float[] info = d.getOwner(Integer
+									.parseInt(ltrim(segments[6])));
+							if ((int)info[1] == 3) {
+								fee = info[3];
+							} else {
+								fee = 0;
+							}
+							HourKey = String.format(Statd.KeyFormatter, adid,
+									day, gethour(segments[4]));
+							AreaKey = String.format(Statd.KeyFormatter, adid,
+									day, segments[9]);
+							HostKey = String.format(Statd.KeyFormatter, adid,
+									day, ha[0]);
+							AdspaceKey = String.format(Statd.KeyFormatter,
+									adid, day, ha[1]);
+							SourceKey = String.format(Statd.KeyFormatter, adid,
+									day, segments[2]);
 							// host, view_type, view_location, size, rtb_source
 							AdsKey = String.format("%s|%s", ha[0], ha[2]);
 						}
@@ -231,19 +292,19 @@ public class Statd {
 				if (x >= 0) {
 					try {
 						y = AdsData.get(AdsKey);
-						if(y[0] == 0);
-					} catch(Exception e) {
-						y = new int[] {0, 0, 0};
+						if (y[0] == 0)
+							;
+					} catch (Exception e) {
+						y = new int[] { 0, 0, 0 };
 						AdsData.put(AdsKey, y);
 					}
 					++y[x];
 				}
-				
+
 				double t[] = null;
 				if (!HourData.containsKey(HourKey))
-					HourData.put(HourKey,
-							(t = new double[] { 0, 0, 0, 0,
-									0, 0, 0 }));
+					HourData.put(HourKey, (t = new double[] { 0, 0, 0, 0, 0, 0,
+							0 }));
 				else
 					t = HourData.get(HourKey);
 				if (Type == Statd.TBIDRES) {
@@ -252,8 +313,8 @@ public class Statd {
 				}
 				++t[Type];
 				if (!AreaData.containsKey(AreaKey))
-					AreaData.put(AreaKey,
-							(t = new double[] { 0, 0, 0, 0, 0, 0, 0 }));
+					AreaData.put(AreaKey, (t = new double[] { 0, 0, 0, 0, 0, 0,
+							0 }));
 				else
 					t = AreaData.get(AreaKey);
 				if (Type == Statd.TBIDRES) {
@@ -262,9 +323,8 @@ public class Statd {
 				}
 				++t[Type];
 				if (!SourceData.containsKey(SourceKey))
-					SourceData.put(SourceKey,
-							(t = new double[] { 0, 0, 0, 0,
-									0, 0, 0 }));
+					SourceData.put(SourceKey, (t = new double[] { 0, 0, 0, 0,
+							0, 0, 0 }));
 				else
 					t = SourceData.get(SourceKey);
 				if (Type == Statd.TBIDRES) {
@@ -273,20 +333,21 @@ public class Statd {
 				}
 				++t[Type];
 				if (!HostData.containsKey(HostKey))
-					HostData.put(HostKey,
-							(t = new double[] { 0, 0, 0, 0,
-									0, 0, 0 }));
+					HostData.put(HostKey, (t = new double[] { 0, 0, 0, 0, 0, 0,
+							0 }));
 				else
 					t = HostData.get(HostKey);
 				if (Type == Statd.TBIDRES) {
 					t[5] += fee;
 					t[6] += cost;
 				}
+				if (Type == Statd.TCLICK) {
+					t[5] += fee;
+				}
 				++t[Type];
 				if (!AdspaceData.containsKey(AdspaceKey))
-					AdspaceData.put(AdspaceKey,
-							(t = new double[] { 0, 0, 0, 0,
-									0, 0, 0 }));
+					AdspaceData.put(AdspaceKey, (t = new double[] { 0, 0, 0, 0,
+							0, 0, 0 }));
 				else
 					t = AdspaceData.get(AdspaceKey);
 				if (Type == Statd.TBIDRES) {
@@ -299,6 +360,7 @@ public class Statd {
 			e.printStackTrace();
 		}
 	}
+
 	public static void main(String[] args) {
 		// TODO Auto-generated method stub
 
@@ -337,30 +399,56 @@ public class Statd {
 				File fp = new File(f);
 				if (fp.exists()) {
 					BufferedReader br = null;
-					try { br = new BufferedReader(new InputStreamReader(new FileInputStream(fp))); } catch (FileNotFoundException e) { e.printStackTrace(); }
+					try {
+						br = new BufferedReader(new InputStreamReader(
+								new FileInputStream(fp)));
+					} catch (FileNotFoundException e) {
+						e.printStackTrace();
+					}
 					if (br != null) {
 						String line = null;
-						try { line = br.readLine(); } catch (IOException e) { e.printStackTrace(); }
-						while (line != null) {
-							parseLine(line, d, HourData, AreaData, HostData, AdspaceData, SourceData, AdsData, errorBidres, errorShow, errorClick);
-							try { line = br.readLine(); } catch (IOException e) { line = null; e.printStackTrace(); }
+						try {
+							line = br.readLine();
+						} catch (IOException e) {
+							e.printStackTrace();
 						}
-						try { br.close(); } catch (IOException e) { e.printStackTrace(); }
+						while (line != null) {
+							parseLine(line, d, HourData, AreaData, HostData,
+									AdspaceData, SourceData, AdsData,
+									errorBidres, errorShow, errorClick);
+							try {
+								line = br.readLine();
+							} catch (IOException e) {
+								line = null;
+								e.printStackTrace();
+							}
+						}
+						try {
+							br.close();
+						} catch (IOException e) {
+							e.printStackTrace();
+						}
 					}
 				}
 			}
 			d.SYNC();
-			HashSet<String>errorBidres2 = new HashSet<String>();
-			for(String line : errorBidres) {
-				parseLine(line, d, HourData, AreaData, HostData, AdspaceData, SourceData, AdsData, errorBidres2, errorShow, errorClick);
+			HashSet<String> errorBidres2 = new HashSet<String>();
+			for (String line : errorBidres) {
+				parseLine(line, d, HourData, AreaData, HostData, AdspaceData,
+						SourceData, AdsData, errorBidres2, errorShow,
+						errorClick);
 			}
-			HashSet<String>errorShow2 = new HashSet<String>();
-			for(String line : errorShow) {
-				parseLine(line, d, HourData, AreaData, HostData, AdspaceData, SourceData, AdsData, errorBidres, errorShow2, errorClick);
+			HashSet<String> errorShow2 = new HashSet<String>();
+			for (String line : errorShow) {
+				parseLine(line, d, HourData, AreaData, HostData, AdspaceData,
+						SourceData, AdsData, errorBidres, errorShow2,
+						errorClick);
 			}
-			HashSet<String>errorClick2 = new HashSet<String>();
-			for(String line : errorClick) {
-				parseLine(line, d, HourData, AreaData, HostData, AdspaceData, SourceData, AdsData, errorBidres, errorShow, errorClick2);
+			HashSet<String> errorClick2 = new HashSet<String>();
+			for (String line : errorClick) {
+				parseLine(line, d, HourData, AreaData, HostData, AdspaceData,
+						SourceData, AdsData, errorBidres, errorShow,
+						errorClick2);
 			}
 			System.gc();
 			d.SYNC();
@@ -533,14 +621,14 @@ public class Statd {
 						e.printStackTrace();
 					}
 				}
-				int[] c = new int[]{0, 0, 0};
+				int[] c = new int[] { 0, 0, 0 };
 				for (String r : AdsData.keySet()) {
 					c = AdsData.get(r);
 					d.j2.hincrBy(r, Statd.P, c[0]);
 					d.j2.hincrBy(r, Statd.S, c[1]);
 					d.j2.hincrBy(r, Statd.C, c[2]);
 				}
-				
+
 				TAG("Write complete !");
 				data.clear();
 				System.gc();

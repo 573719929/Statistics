@@ -61,7 +61,7 @@ public class Db {
 	private HashMap<Integer, Double> PlanCD;
 	private HashMap<Integer, float[]> RateCache;
 
-	private HashMap<Integer, Integer> OwnerCache;
+	private HashMap<Integer, float[]> OwnerCache;
 	private String mongohost;
 	private String mysqlhost;
 	public Jedis jedis;
@@ -73,7 +73,7 @@ public class Db {
 		this.UserCD = new HashMap<Integer, Double>();
 		this.PlanCD = new HashMap<Integer, Double>();
 		this.RateCache = new HashMap<Integer, float[]>();
-		this.OwnerCache = new HashMap<Integer, Integer>();
+		this.OwnerCache = new HashMap<Integer, float[]>();
 
 		try {
 			Class.forName("com.mysql.jdbc.Driver");
@@ -101,14 +101,15 @@ public class Db {
 		}
 	}
 
-	public int getOwner(int adid) {
+	public float[] getOwner(int adid) {
 		try {
 			return this.OwnerCache.get(adid);
 		} catch (Exception e) {
 			Statement statement = null;
 			ResultSet rs = null;
 			try {
-				int uid = -1;
+				int uid = -1, utype = -1;
+				float cpm = -1, cpc = -1;
 				statement = this.conn.createStatement();
 				String sql = String.format(
 						"select uid from adp_ad_info where adid=%d limit 1",
@@ -118,11 +119,12 @@ public class Db {
 					uid = rs.getInt("uid");
 				rs.close();
 				statement.close();
-				this.OwnerCache.put(adid, uid);
-				return uid;
+				float[] rett = new float[]{uid, utype, cpm, cpc};
+				this.OwnerCache.put(adid, rett);
+				return rett;
 			} catch (SQLException e1) {
 				// e1.printStackTrace();
-				return -1;
+				return new float[]{-1, -1, -1, -1};
 			} finally {
 				if (rs != null) {
 					try {
