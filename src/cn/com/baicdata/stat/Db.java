@@ -11,6 +11,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -102,9 +103,9 @@ public class Db {
 	}
 
 	public float[] getOwner(int adid) {
-		try {
+		if(this.OwnerCache.containsKey(adid)) {
 			return this.OwnerCache.get(adid);
-		} catch (Exception e) {
+		} else {
 			Statement statement = null;
 			ResultSet rs = null;
 			try {
@@ -112,32 +113,36 @@ public class Db {
 				float cpm = -1, cpc = -1;
 				statement = this.conn.createStatement();
 				String sql = String.format(
-						"select uid from adp_ad_info where adid=%d limit 1",
+						"select a.uid as id,type,cpm_charge,cpc_charge from adp_ad_info a left join adp_user_info b on a.uid=b.uid where adid=%d limit 1",
 						adid);
 				rs = statement.executeQuery(sql);
-				while (rs.next())
-					uid = rs.getInt("uid");
+				while (rs.next()) {
+					uid = rs.getInt("id");
+					utype = rs.getInt("type");
+					cpm = rs.getFloat("cpm_charge");
+					cpc = rs.getFloat("cpc_charge");
+				}
 				rs.close();
 				statement.close();
 				float[] rett = new float[]{uid, utype, cpm, cpc};
 				this.OwnerCache.put(adid, rett);
 				return rett;
 			} catch (SQLException e1) {
-				// e1.printStackTrace();
+//				 e1.printStackTrace();
 				return new float[]{-1, -1, -1, -1};
 			} finally {
 				if (rs != null) {
 					try {
 						rs.close();
 					} catch (SQLException e1) {
-						 e1.printStackTrace();
+//						 e1.printStackTrace();
 					}
 				}
 				if (statement != null) {
 					try {
 						statement.close();
 					} catch (SQLException e1) {
-						 e1.printStackTrace();
+//						 e1.printStackTrace();
 					}
 				}
 			}
@@ -166,7 +171,7 @@ public class Db {
 				rs.close();
 				statement.close();
 			} catch (SQLException e1) {
-				// e1.printStackTrace();
+//				 e1.printStackTrace();
 			}
 			this.adcache.put(adid, ret);
 			return ret;
@@ -175,6 +180,7 @@ public class Db {
 
 	public String getHost(String id) {
 		try {
+//			System.out.println(id);
 			List<String> r2 = this.jedis.lrange(id, 0, 5);
 			String[] r = new String[5];
 			for (int i = 0; i < 5; i++) {
@@ -182,6 +188,7 @@ public class Db {
 			}
 			return String.format("%s,%s,%s", r[1], r[2], r[4]);
 		} catch (Exception e) {
+//			e.printStackTrace();
 			return null;
 		}
 	}
@@ -256,11 +263,12 @@ public class Db {
 			this.pipeline.rpush(pushid, bidprice);
 			this.pipeline.rpush(pushid, info);
 			this.pipeline.expire(pushid, 360);
-			
-
-
+//			System.out.println(pushid + " Saved");
+//			this.SYNC();
+//			System.out.println(this.jedis.lrange(pushid, 0, 99));
+//			System.out.println(Arrays.toString(this.jedis.lrange(pushid, 0, 99).toArray()));
 		} catch (Exception e) {
-			e.printStackTrace();
+//			e.printStackTrace();
 		}
 	}
 
@@ -279,7 +287,7 @@ public class Db {
 			String c =this.jedis.lpop(pushid);
 			this.jedis.lpush(pushid, new String(new byte[]{(byte) (Db._B_BIDRES | c.getBytes()[0])}));
 		} catch (Exception e) {
-			e.printStackTrace();
+//			e.printStackTrace();
 		}
 	}
 
@@ -289,7 +297,7 @@ public class Db {
 			String c =this.jedis.lpop(pushid);
 			this.jedis.lpush(pushid, new String(new byte[]{(byte) (Db._B_CREATIVE | c.getBytes()[0])}));
 		} catch (Exception e) {
-			e.printStackTrace();
+//			e.printStackTrace();
 		}
 	}
 
@@ -299,7 +307,7 @@ public class Db {
 			String c =this.jedis.lpop(pushid);
 			this.jedis.lpush(pushid, new String(new byte[]{(byte) (Db._B_SHOW | c.getBytes()[0])}));
 		} catch (Exception e) {
-			e.printStackTrace();
+//			e.printStackTrace();
 		}
 	}
 
@@ -309,7 +317,7 @@ public class Db {
 			String c =this.jedis.lpop(pushid);
 			this.jedis.lpush(pushid, new String(new byte[]{(byte) (Db._B_CLICK | c.getBytes()[0])}));
 		} catch (Exception e) {
-			e.printStackTrace();
+//			e.printStackTrace();
 		}
 	}
 

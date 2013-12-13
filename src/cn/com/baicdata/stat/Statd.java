@@ -37,7 +37,7 @@ public class Statd {
 
 	public static final String KeyFormatter = "%s,%s,%s";
 
-	public static final String DATABASE = "StatV3_Test";
+	public static final String DATABASE = "StatV3";
 
 	public static final String RBID = " rtb_bid";
 	public static final String RBIDRES = " rtb_bidres";
@@ -124,7 +124,7 @@ public class Statd {
 				if (len >= 33 && segments[0].equals(Statd.RBID)) {
 					if (true) {
 						Type = Statd.TBID;
-
+//						System.out.println("BID found:"+segments[7]);
 						d.BID(segments[7], segments[22], segments[24],
 								segments[32], String
 										.format("%s|%s|%sX%s|%s", segments[21],
@@ -148,10 +148,13 @@ public class Statd {
 					try {
 						if (d.isValidBidres(segments[7])) {
 							String ha[] = d.getHost(segments[7]).split(",");
+//							System.out.println("BIDRES found:"+segments[7]);
 							float[] info = d.getOwner(Integer
 									.parseInt(ltrim(segments[6])));
+//							System.out.println(info);System.out.println(String.format("%f,%f,%f,%f", info[0], info[1], info[2], info[3]));
 							Userid = (int) info[0];
 							int usertype = (int) info[1];
+							
 							cost = Double.parseDouble(segments[9]);
 							double bidprice = d.GetBidprice(segments[7]);
 							if (cost > 10 || cost < 0) {
@@ -197,16 +200,19 @@ public class Statd {
 								// host, view_type, view_location, size,
 								// rtb_source
 								AdsKey = String.format("%s|%s", ha[0], ha[2]);
-								Type = Statd.TBIDRES;
+								
 								d.BIDRES(segments[7]);
+								Type = Statd.TBIDRES;
 							}
 						}
 					} catch (Exception e) {
+						e.printStackTrace();
 						errorBidres.add(line);
 					}
 				} else if (len >= 11 && segments[0].equals(Statd.RCREATIVE)) {
 					d.SYNC();
 					if (d.isValidCreative(segments[8])) {
+//						System.out.println("CREATIVE found:"+segments[8]);
 						String ha[] = d.getHost(segments[8]).split(",");
 						Type = Statd.TCREATIVE;
 						d.CREATIVE(segments[8]);
@@ -226,6 +232,7 @@ public class Statd {
 					d.SYNC();
 					try {
 						if (d.isValidShow(segments[7])) {
+//							System.out.println("SHOW found:"+segments[7]);
 							String ha[] = d.getHost(segments[7]).split(",");
 							Type = Statd.TSHOW;
 							d.SHOW(segments[7]);
@@ -250,6 +257,7 @@ public class Statd {
 					d.SYNC();
 					try {
 						if (d.isValidClick(segments[7])) {
+//							System.out.println("CLICK found:"+segments[7]);
 							String ha[] = d.getHost(segments[7]).split(",");
 							Type = Statd.TCLICK;
 							d.CLICK(segments[7]);
@@ -311,6 +319,9 @@ public class Statd {
 					t[5] += fee;
 					t[6] += cost;
 				}
+				if (Type == Statd.TCLICK) {
+					t[5] += fee;
+				}
 				++t[Type];
 				if (!AreaData.containsKey(AreaKey))
 					AreaData.put(AreaKey, (t = new double[] { 0, 0, 0, 0, 0, 0,
@@ -321,6 +332,9 @@ public class Statd {
 					t[5] += fee;
 					t[6] += cost;
 				}
+				if (Type == Statd.TCLICK) {
+					t[5] += fee;
+				}
 				++t[Type];
 				if (!SourceData.containsKey(SourceKey))
 					SourceData.put(SourceKey, (t = new double[] { 0, 0, 0, 0,
@@ -330,6 +344,9 @@ public class Statd {
 				if (Type == Statd.TBIDRES) {
 					t[5] += fee;
 					t[6] += cost;
+				}
+				if (Type == Statd.TCLICK) {
+					t[5] += fee;
 				}
 				++t[Type];
 				if (!HostData.containsKey(HostKey))
@@ -353,6 +370,9 @@ public class Statd {
 				if (Type == Statd.TBIDRES) {
 					t[5] += fee;
 					t[6] += cost;
+				}
+				if (Type == Statd.TCLICK) {
+					t[5] += fee;
 				}
 				++t[Type];
 			}
