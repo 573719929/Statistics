@@ -265,7 +265,7 @@ public class Statd {
 							float[] info = d.getOwner(Integer
 									.parseInt(ltrim(segments[6])));
 							if ((int)info[1] == 3) {
-								fee = info[3];
+								fee = info[3]*1000;
 							} else {
 								fee = 0;
 							}
