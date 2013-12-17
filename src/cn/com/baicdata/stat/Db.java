@@ -56,8 +56,8 @@ public class Db {
 	private String user = "baicdata";
 	private String password = "j8verXE8WZnDNXPV";
 	private Connection conn = null;
-	// 推送状态缓存 push_id => status, host, ad_space, bid_price
-	private HashMap<Integer, int[]> adcache; // 广告信息缓存
+	// æŽ¨é€�çŠ¶æ€�ç¼“å­˜ push_id => status, host, ad_space, bid_price
+	private HashMap<Integer, int[]> adcache; // å¹¿å‘Šä¿¡æ�¯ç¼“å­˜
 	private HashMap<Integer, Double> UserCD;
 	private HashMap<Integer, Double> PlanCD;
 	private HashMap<Integer, float[]> RateCache;
@@ -113,12 +113,12 @@ public class Db {
 				float cpm = -1, cpc = -1;
 				statement = this.conn.createStatement();
 				String sql = String.format(
-						"select a.uid as id,type,cpm_charge,cpc_charge from adp_ad_info a left join adp_user_info b on a.uid=b.uid where adid=%d limit 1",
+						"select a.uid as id,charge_type,cpm_charge,cpc_charge from adp_ad_info a left join adp_user_info b on a.uid=b.uid where adid=%d limit 1",
 						adid);
 				rs = statement.executeQuery(sql);
 				while (rs.next()) {
 					uid = rs.getInt("id");
-					utype = rs.getInt("type");
+					utype = rs.getInt("charge_type");
 					cpm = rs.getFloat("cpm_charge");
 					cpc = rs.getFloat("cpc_charge");
 				}
@@ -544,11 +544,11 @@ public class Db {
 	}
 
 	/**
-	 * 压缩字符串为 byte[] 储存可以使用new sun.misc.BASE64Encoder().encodeBuffer(byte[] b)方法
-	 * 保存为字符串
+	 * åŽ‹ç¼©å­—ç¬¦ä¸²ä¸º byte[] å‚¨å­˜å�¯ä»¥ä½¿ç”¨new sun.misc.BASE64Encoder().encodeBuffer(byte[] b)æ–¹æ³•
+	 * ä¿�å­˜ä¸ºå­—ç¬¦ä¸²
 	 * 
 	 * @param str
-	 *            压缩前的文本
+	 *            åŽ‹ç¼©å‰�çš„æ–‡æœ¬
 	 * @return
 	 */
 	public static final byte[] compress(String str) {
@@ -587,11 +587,11 @@ public class Db {
 	}
 
 	/**
-	 * 将压缩后的 byte[] 数据解压缩
+	 * å°†åŽ‹ç¼©å�Žçš„ byte[] æ•°æ�®è§£åŽ‹ç¼©
 	 * 
 	 * @param compressed
-	 *            压缩后的 byte[] 数据
-	 * @return 解压后的字符串
+	 *            åŽ‹ç¼©å�Žçš„ byte[] æ•°æ�®
+	 * @return è§£åŽ‹å�Žçš„å­—ç¬¦ä¸²
 	 */
 	public static final String decompress(byte[] compressed) {
 		if (compressed == null)
