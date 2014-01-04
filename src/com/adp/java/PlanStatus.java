@@ -16,7 +16,8 @@ public enum PlanStatus implements org.apache.thrift.TEnum {
   STOPPED(2),
   EXPIRED(3),
   DELETED(4),
-  FROZEN(5);
+  FROZEN(5),
+  NOBUDGET(6);
 
   private final int value;
 
@@ -47,6 +48,8 @@ public enum PlanStatus implements org.apache.thrift.TEnum {
         return DELETED;
       case 5:
         return FROZEN;
+      case 6:
+        return NOBUDGET;
       default:
         return null;
     }

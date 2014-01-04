@@ -486,7 +486,7 @@ public class Db {
 			// e.printStackTrace();
 		}
 		try {
-			client.updateAdPlanStatus(pid, PlanStatus.STOPPED);
+			client.updateAdPlanStatus(pid, PlanStatus.NOBUDGET);
 		} catch (NumberFormatException e) {
 			// e.printStackTrace();
 		} catch (TException e) {
@@ -518,7 +518,7 @@ public class Db {
 		for (String pid : pids) {
 			try {
 				client.updateAdPlanStatus(Integer.parseInt(pid),
-						PlanStatus.STOPPED);
+						PlanStatus.NOBUDGET);
 			} catch (NumberFormatException e) {
 				// e.printStackTrace();
 			} catch (TException e) {
