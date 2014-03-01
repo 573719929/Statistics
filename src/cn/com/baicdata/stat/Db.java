@@ -52,12 +52,11 @@ public class Db {
 	private static final byte _B_SHOW = '\u0004';	 //'\u003c'; 	// 0000 0000 0000 0100
 	private static final byte _B_CLICK = '\u0002';	 //'\u003e'; 	// 0000 0000 0000 0010
 
-	private String url = "jdbc:mysql://%s:33966/adp?useUnicode=true&characterEncoding=UTF-8&useFastDateParsing=false";
-	private String user = "baicdata";
-	private String password = "j8verXE8WZnDNXPV";
+	private String url = "jdbc:mysql://%s:3306/adp?useUnicode=true&characterEncoding=UTF-8&useFastDateParsing=false";
+	private String user = "root";
+	private String password = "psjldjflsjfiowJOIJFojf32";
 	private Connection conn = null;
-	// æŽ¨é€�çŠ¶æ€�ç¼“å­˜ push_id => status, host, ad_space, bid_price
-	private HashMap<Integer, int[]> adcache; // å¹¿å‘Šä¿¡æ�¯ç¼“å­˜
+	private HashMap<Integer, int[]> adcache;
 	private HashMap<Integer, Double> UserCD;
 	private HashMap<Integer, Double> PlanCD;
 	private HashMap<Integer, float[]> RateCache;
@@ -87,13 +86,15 @@ public class Db {
 		} catch (SQLException e) {
 			 e.printStackTrace();
 		}
+		System.out.println("Redis:"+redis);
 		this.jedis = new Jedis(redis, 61933);
 		this.j2 = new Jedis(redis, 61934);
+		jedis.get("1");
 		this.pipeline = this.jedis.pipelined();
+		System.out.println(this.pipeline);
 		this.mysqlhost = host1;
 		this.mongohost = host2;
 	}
-
 	public float GetBidprice(String pushid) {
 		try {
 			return Float.parseFloat(this.jedis.lrange(pushid, 3, 3).get(0));
@@ -101,7 +102,6 @@ public class Db {
 			return -1;
 		}
 	}
-
 	public float[] getOwner(int adid) {
 		if(this.OwnerCache.containsKey(adid)) {
 			return this.OwnerCache.get(adid);
@@ -125,6 +125,7 @@ public class Db {
 				rs.close();
 				statement.close();
 				float[] rett = new float[]{uid, utype, cpm, cpc};
+				System.out.println("Get User Info:"+Arrays.toString(rett));
 				this.OwnerCache.put(adid, rett);
 				return rett;
 			} catch (SQLException e1) {
@@ -148,7 +149,6 @@ public class Db {
 			}
 		}
 	}
-
 	public int[] GetAdInfo(int adid) {
 		int[] ret = this.adcache.get(adid);
 		if (ret != null) {
@@ -180,16 +180,12 @@ public class Db {
 
 	public String getHost(String id) {
 		try {
-//			System.out.println(id);
 			List<String> r2 = this.jedis.lrange(id, 0, 5);
 			String[] r = new String[5];
-			for (int i = 0; i < 5; i++) {
-				r[i] = r2.get(i);
-			}
+			for (int i = 0; i < 5; i++) r[i] = r2.get(i);
 			return String.format("%s,%s,%s", r[1], r[2], r[4]);
 		} catch (Exception e) {
-//			e.printStackTrace();
-			return null;
+			return ",,,,,,,";
 		}
 	}
 
@@ -205,7 +201,6 @@ public class Db {
 			this.PlanCD.put(planid, cost);
 		}
 	}
-
 	public float[] GetRate(int userid) {
 		float ret[] = this.RateCache.get(userid);
 		if (ret != null) {
@@ -254,7 +249,7 @@ public class Db {
 
 	public void BID(String pushid, String host, String adspace, String bidprice, String info) {
 		try {
-			// host, view_type, view_location, size, rtb_source
+			// host, adspace, bidprice, view_type, view_location, size, rtb_source
 			// into = view_type, view_location, size, rtb_source
 			this.pipeline.del(pushid);
 			this.pipeline.rpush(pushid, Db.BID);
@@ -263,12 +258,7 @@ public class Db {
 			this.pipeline.rpush(pushid, bidprice);
 			this.pipeline.rpush(pushid, info);
 			this.pipeline.expire(pushid, 360);
-//			System.out.println(pushid + " Saved");
-//			this.SYNC();
-//			System.out.println(this.jedis.lrange(pushid, 0, 99));
-//			System.out.println(Arrays.toString(this.jedis.lrange(pushid, 0, 99).toArray()));
 		} catch (Exception e) {
-//			e.printStackTrace();
 		}
 	}
 
@@ -280,51 +270,41 @@ public class Db {
 		}
 		this.pipeline = this.jedis.pipelined();
 	}
-
 	public void BIDRES(String pushid) {
 		try {
 			this.jedis.expire(pushid, 360);
 			String c =this.jedis.lpop(pushid);
 			this.jedis.lpush(pushid, new String(new byte[]{(byte) (Db._B_BIDRES | c.getBytes()[0])}));
 		} catch (Exception e) {
-//			e.printStackTrace();
 		}
 	}
-
 	public void CREATIVE(String pushid) {
 		try {
 			this.jedis.expire(pushid, 360);
 			String c =this.jedis.lpop(pushid);
 			this.jedis.lpush(pushid, new String(new byte[]{(byte) (Db._B_CREATIVE | c.getBytes()[0])}));
 		} catch (Exception e) {
-//			e.printStackTrace();
 		}
 	}
-
 	public void SHOW(String pushid) {
 		try {
 			this.jedis.expire(pushid, 360);
 			String c =this.jedis.lpop(pushid);
 			this.jedis.lpush(pushid, new String(new byte[]{(byte) (Db._B_SHOW | c.getBytes()[0])}));
 		} catch (Exception e) {
-//			e.printStackTrace();
 		}
 	}
-
 	public void CLICK(String pushid) {
 		try {
 			this.jedis.expire(pushid, 10);
 			String c =this.jedis.lpop(pushid);
 			this.jedis.lpush(pushid, new String(new byte[]{(byte) (Db._B_CLICK | c.getBytes()[0])}));
 		} catch (Exception e) {
-//			e.printStackTrace();
 		}
 	}
-
 	public boolean isValidBid(String pushid) {
 		return !this.jedis.exists(pushid);
 	}
-
 	public boolean isValidBidres(String pushid) {
 		try {
 			byte c = this.jedis.lrange(pushid, 0, 1).get(0).getBytes()[0];
@@ -333,7 +313,6 @@ public class Db {
 			return true;
 		}
 	}
-
 	public boolean isValidCreative(String pushid) {
 		try {
 			byte c = this.jedis.lrange(pushid, 0, 1).get(0).getBytes()[0];
@@ -342,7 +321,6 @@ public class Db {
 			return true;
 		}
 	}
-
 	public boolean isValidShow(String pushid) {
 		try {
 			byte c = this.jedis.lrange(pushid, 0, 1).get(0).getBytes()[0];
@@ -351,7 +329,6 @@ public class Db {
 			return true;
 		}
 	}
-
 	public boolean isValidClick(String pushid) {
 		try {
 			byte c = this.jedis.lrange(pushid, 0, 1).get(0).getBytes()[0];
@@ -360,9 +337,7 @@ public class Db {
 			return true;
 		}
 	}
-
 	public void processCutDown() {
-		// TODO Auto-generated method stub
 		Mongo mongo = null;
 		try {
 			mongo = new Mongo(this.mongohost, 12331);
@@ -375,7 +350,7 @@ public class Db {
 				double account = this.getAccount(userid);
 				if (account <= 0) {
 					this.StopAllPlan(userid);
-					// System.out.println("Stop all <uid:" + userid + ">");
+					 System.out.println("Stop all <uid:" + userid + ">");
 				}
 			}
 			for (int planid : this.PlanCD.keySet()) {
@@ -383,13 +358,12 @@ public class Db {
 						.getDayCost(mongo, planid);
 				if (budget >= 0 && daycost > budget) {
 					this.StopAPlan(planid);
-					// System.out.println("Stop a plan <pid:" + planid + ">");
+					 System.out.println("Stop a plan <pid:" + planid + ">");
 				}
 			}
 		}
 		mongo.close();
 	}
-
 	private double getBudget(int pid) {
 		Statement statement = null;
 		try {
@@ -423,7 +397,6 @@ public class Db {
 		}
 		return budget;
 	}
-
 	private double getAccount(int uid) {
 		String sql = "select account from adp_user_info where uid=" + uid + " limit 1";
 		Statement statement = null;
@@ -457,7 +430,6 @@ public class Db {
 		}
 		return account;
 	}
-
 	public double getDayCost(Mongo mongo, int pid) {
 		Date d = new Date();
 		String today = new SimpleDateFormat("yyyyMMdd").format(d);
@@ -474,8 +446,8 @@ public class Db {
 			ret += Double.parseDouble(b.next().get(Statd.COST).toString());
 		return ret;
 	}
-
 	private void StopAPlan(int pid) {
+		System.out.println("Stop Plan:"+pid);
 		TTransport transport = null;
 		transport = new TSocket(this.mysqlhost, 9098);
 		TProtocol protocol = new TBinaryProtocol(transport);
@@ -494,8 +466,8 @@ public class Db {
 		}
 		transport.close();
 	}
-
 	private void StopAllPlan(int uid) {
+		System.out.println("Stop All:"+uid);
 		TTransport transport = null;
 		transport = new TSocket(this.mysqlhost, 9098);
 		TProtocol protocol = new TBinaryProtocol(transport);
@@ -520,15 +492,14 @@ public class Db {
 				client.updateAdPlanStatus(Integer.parseInt(pid),
 						PlanStatus.NOBUDGET);
 			} catch (NumberFormatException e) {
-				// e.printStackTrace();
+				 e.printStackTrace();
 			} catch (TException e) {
-				// e.printStackTrace();
+				 e.printStackTrace();
 			}
 		}
 		transport.close();
 
 	}
-
 	private void CutDownUser(int uid, Double charge) {
 		Statement statement = null;
 		try {
@@ -539,101 +510,13 @@ public class Db {
 			statement.executeUpdate(sql);
 			statement.close();
 		} catch (SQLException e) {
-			// e.printStackTrace();
+			 e.printStackTrace();
 		}
 	}
-
-	/**
-	 * åŽ‹ç¼©å­—ç¬¦ä¸²ä¸º byte[] å‚¨å­˜å�¯ä»¥ä½¿ç”¨new sun.misc.BASE64Encoder().encodeBuffer(byte[] b)æ–¹æ³•
-	 * ä¿�å­˜ä¸ºå­—ç¬¦ä¸²
-	 * 
-	 * @param str
-	 *            åŽ‹ç¼©å‰�çš„æ–‡æœ¬
-	 * @return
-	 */
-	public static final byte[] compress(String str) {
-		if (str == null)
-			return null;
-
-		byte[] compressed;
-		ByteArrayOutputStream out = null;
-		ZipOutputStream zout = null;
-
-		try {
-			out = new ByteArrayOutputStream();
-			zout = new ZipOutputStream(out);
-			zout.putNextEntry(new ZipEntry("0"));
-			zout.write(str.getBytes());
-			zout.closeEntry();
-			compressed = out.toByteArray();
-		} catch (IOException e) {
-			compressed = null;
-		} finally {
-			if (zout != null) {
-				try {
-					zout.close();
-				} catch (IOException e) {
-				}
-			}
-			if (out != null) {
-				try {
-					out.close();
-				} catch (IOException e) {
-				}
-			}
-		}
-
-		return compressed;
-	}
-
-	/**
-	 * å°†åŽ‹ç¼©å�Žçš„ byte[] æ•°æ�®è§£åŽ‹ç¼©
-	 * 
-	 * @param compressed
-	 *            åŽ‹ç¼©å�Žçš„ byte[] æ•°æ�®
-	 * @return è§£åŽ‹å�Žçš„å­—ç¬¦ä¸²
-	 */
-	public static final String decompress(byte[] compressed) {
-		if (compressed == null)
-			return null;
-
-		ByteArrayOutputStream out = null;
-		ByteArrayInputStream in = null;
-		ZipInputStream zin = null;
-		String decompressed;
-		try {
-			out = new ByteArrayOutputStream();
-			in = new ByteArrayInputStream(compressed);
-			zin = new ZipInputStream(in);
-			byte[] buffer = new byte[1024];
-			int offset = -1;
-			while ((offset = zin.read(buffer)) != -1) {
-				out.write(buffer, 0, offset);
-			}
-			decompressed = out.toString();
-		} catch (IOException e) {
-			decompressed = null;
-		} finally {
-			if (zin != null) {
-				try {
-					zin.close();
-				} catch (IOException e) {
-				}
-			}
-			if (in != null) {
-				try {
-					in.close();
-				} catch (IOException e) {
-				}
-			}
-			if (out != null) {
-				try {
-					out.close();
-				} catch (IOException e) {
-				}
-			}
-		}
-
-		return decompressed;
+	public static void main(String args[]) {
+		Jedis j = new Jedis("112.124.28.142", 61933);
+		Pipeline pipeline = j.pipelined();
+//		j.get("aa");
+		pipeline.sync();
 	}
 }

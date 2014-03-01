@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.UnknownHostException;
 import java.text.SimpleDateFormat;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -39,9 +40,15 @@ public class Statd {
 
 	public static final String DATABASE = "StatV3";
 
-	public static final String RBID = " rtb_bid";
+//	public static final String RBID = " rtb_bid";
+//	public static final String RBIDRES = " rtb_bidres";
+//	public static final String RCREATIVE = " rtb_creative";
+//	public static final String RSHOW = " rtb_show";
+//	public static final String RCLICK = " rtb_click";
+	//
+	public static final String RBID = " rtb_creative";
 	public static final String RBIDRES = " rtb_bidres";
-	public static final String RCREATIVE = " rtb_creative";
+	public static final String RCREATIVE = " rtb_creative222";
 	public static final String RSHOW = " rtb_show";
 	public static final String RCLICK = " rtb_click";
 
@@ -232,10 +239,17 @@ public class Statd {
 					d.SYNC();
 					try {
 						if (d.isValidShow(segments[7])) {
-//							System.out.println("SHOW found:"+segments[7]);
+							System.out.println("SHOW found:"+segments[7]);
 							String ha[] = d.getHost(segments[7]).split(",");
 							Type = Statd.TSHOW;
 							d.SHOW(segments[7]);
+							float[] info = d.getOwner(Integer
+									.parseInt(ltrim(segments[6])));
+							if ((int)info[1] == 2) {
+								fee = info[2];
+							} else {
+								fee = 0;
+							}
 							String adid = ltrim(segments[6]), day = getday(segments[4]);
 							HourKey = String.format(Statd.KeyFormatter, adid,
 									day, gethour(segments[4]));
@@ -319,7 +333,7 @@ public class Statd {
 					t[5] += fee;
 					t[6] += cost;
 				}
-				if (Type == Statd.TCLICK) {
+				if (Type == Statd.TCLICK || Type == Statd.TSHOW) {
 					t[5] += fee;
 				}
 				++t[Type];
@@ -332,7 +346,7 @@ public class Statd {
 					t[5] += fee;
 					t[6] += cost;
 				}
-				if (Type == Statd.TCLICK) {
+				if (Type == Statd.TCLICK || Type == Statd.TSHOW) {
 					t[5] += fee;
 				}
 				++t[Type];
@@ -345,7 +359,7 @@ public class Statd {
 					t[5] += fee;
 					t[6] += cost;
 				}
-				if (Type == Statd.TCLICK) {
+				if (Type == Statd.TCLICK || Type == Statd.TSHOW) {
 					t[5] += fee;
 				}
 				++t[Type];
@@ -358,7 +372,7 @@ public class Statd {
 					t[5] += fee;
 					t[6] += cost;
 				}
-				if (Type == Statd.TCLICK) {
+				if (Type == Statd.TCLICK || Type == Statd.TSHOW) {
 					t[5] += fee;
 				}
 				++t[Type];
@@ -371,7 +385,7 @@ public class Statd {
 					t[5] += fee;
 					t[6] += cost;
 				}
-				if (Type == Statd.TCLICK) {
+				if (Type == Statd.TCLICK || Type == Statd.TSHOW) {
 					t[5] += fee;
 				}
 				++t[Type];
@@ -490,7 +504,7 @@ public class Statd {
 				for (String r : HourData.keySet()) {
 					try {
 						double cn[] = HourData.get(r);
-						// System.out.println(r + ":" + Arrays.toString(cn));
+						 System.out.println(r + ":" + Arrays.toString(cn));
 						r1.clear();
 						r1.put(Statd.BID, (int) cn[0]);
 						r1.put(Statd.BIDRES, (int) cn[1]);
@@ -522,7 +536,7 @@ public class Statd {
 				for (String r : AreaData.keySet()) {
 					try {
 						double cn[] = AreaData.get(r);
-						// System.out.println(r + ":" + Arrays.toString(cn));
+						 System.out.println(r + ":" + Arrays.toString(cn));
 						r1.clear();
 						r1.put(Statd.BID, (int) cn[0]);
 						r1.put(Statd.BIDRES, (int) cn[1]);
@@ -553,7 +567,7 @@ public class Statd {
 				for (String r : SourceData.keySet()) {
 					try {
 						double cn[] = SourceData.get(r);
-						// System.out.println(r + ":" + Arrays.toString(cn));
+						 System.out.println(r + ":" + Arrays.toString(cn));
 						r1.clear();
 						r1.put(Statd.BID, (int) cn[0]);
 						r1.put(Statd.BIDRES, (int) cn[1]);
@@ -584,7 +598,7 @@ public class Statd {
 				for (String r : HostData.keySet()) {
 					try {
 						double cn[] = HostData.get(r);
-						// System.out.println(r + ":" + Arrays.toString(cn));
+						 System.out.println(r + ":" + Arrays.toString(cn));
 						r1.clear();
 						r1.put(Statd.BID, (int) cn[0]);
 						r1.put(Statd.BIDRES, (int) cn[1]);
@@ -615,7 +629,7 @@ public class Statd {
 				for (String r : AdspaceData.keySet()) {
 					try {
 						double cn[] = AdspaceData.get(r);
-						// System.out.println(r + ":" + Arrays.toString(cn));
+						 System.out.println(r + ":" + Arrays.toString(cn));
 						r1.clear();
 						r1.put(Statd.BID, (int) cn[0]);
 						r1.put(Statd.BIDRES, (int) cn[1]);
@@ -643,10 +657,14 @@ public class Statd {
 				}
 				int[] c = new int[] { 0, 0, 0 };
 				for (String r : AdsData.keySet()) {
+					try {
 					c = AdsData.get(r);
 					d.j2.hincrBy(r, Statd.P, c[0]);
 					d.j2.hincrBy(r, Statd.S, c[1]);
 					d.j2.hincrBy(r, Statd.C, c[2]);
+					} catch (Exception e) {
+						
+					}
 				}
 
 				TAG("Write complete !");
